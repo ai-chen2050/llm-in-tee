@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    ".",
+    "tee_vlc",
+    "tee_llm",
+    "runers",
+]
+
+exclude = []
+
+resolver = "2"
+
+[workspace.lints.clippy]
+nursery = "allow"
+cargo = "allow"
+pedantic = "allow"
+restriction = "allow"
+style = "deny"
+complexity = "deny"
+perf = "deny"
+correctness = "deny"
+dbg_macro = "deny"
+
+[profile.release]
+# debug = true
+strip = true
+incremental = true
+
+[workspace.dependencies]
+anyhow = { version = "1.0.75", features = ["backtrace"] }
