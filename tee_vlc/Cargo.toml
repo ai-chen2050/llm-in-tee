@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "1.35.1", features = ["macros", "net", "time", "rt", "process", "fs", "io-util"] }
+anyhow = { version = "1.0.79", features = ["backtrace"] }
 
 [lints]
 workspace = true
