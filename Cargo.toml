@@ -3,7 +3,7 @@ members = [
     ".",
     "tee_vlc",
     "tee_llm",
-    "runers",
+    "runers", "common",
 ]
 
 exclude = []
@@ -21,10 +21,19 @@ perf = "deny"
 correctness = "deny"
 dbg_macro = "deny"
 
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
-# debug = true
+opt-level = "z"
+lto = true
 strip = true
 incremental = true
 
+[profile.artifact]
+inherits = "release"
+
 [workspace.dependencies]
-anyhow = { version = "1.0.75", features = ["backtrace"] }

@@ -23,3 +23,18 @@ else
 fi
 
 rustup target add x86_64-unknown-linux-musl
+
+echo "Install musl-gcc"
+if ! command -v musl-gcc &> /dev/null; then
+    echo "musl-gcc is not installed. Installing musl-gcc..."
+    curl -LO https://www.musl-libc.org/releases/musl-1.2.2.tar.gz
+    tar xf musl-1.2.2.tar.gz
+    # shellcheck disable=SC2164
+    cd musl-1.2.2
+    ./configure && make && sudo make install
+    echo "PATH=\"/usr/local/musl/bin/:$PATH\"" >> ~/.bashrc
+    # shellcheck disable=SC1090
+    source ~/.bashrc
+else
+    echo "Rust is already installed."
+fi

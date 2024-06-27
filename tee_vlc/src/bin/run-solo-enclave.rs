@@ -30,8 +30,10 @@ async fn main() -> anyhow::Result<()> {
             "artifact",
             "--features",
             "nitro-enclaves,tikv-jemallocator",
-            "--example",
-            "nitro-enclaves-clock-validator",
+            "--package",
+            "tee_vlc",
+            "--bin",
+            "tee_vlc",
         ])
         .status()
         .await?;
@@ -39,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("* cp artifact");
     let status = Command::new("cp")
-        .arg("target/x86_64-unknown-linux-musl/artifact/examples/nitro-enclaves-clock-validator")
+        .arg("target/x86_64-unknown-linux-musl/artifact/tee_vlc")
         .arg(item.clone().ok_or(anyhow::format_err!("missing destination path"))?)
         .status()
         .await?;
@@ -49,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let status = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "cd {} && docker build . -t app && nitro-cli build-enclave --docker-uri app:latest --output-file app.eif",
+            "cd {} && docker build . -t tee_vlc && nitro-cli build-enclave --docker-uri tee_vlc:latest --output-file tee_vlc.eif",
             item.clone().ok_or(anyhow::format_err!("missing destination path"))?
         ))
         .status()
@@ -60,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let status = Command::new("sh")
         .arg("-c")
         .arg(format!(
-            "cd {} && nitro-cli run-enclave --cpu-count 2 --memory 2048 --enclave-cid 16 --eif-path app.eif",
+            "cd {} && nitro-cli run-enclave --cpu-count 2 --memory 2048 --enclave-cid 16 --eif-path tee_vlc.eif",
             item.ok_or(anyhow::format_err!("missing destination path"))?
         ))
         .status()

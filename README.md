@@ -29,7 +29,7 @@ git clone https://github.com/ai-chen2050/llm-in-tee.git
 
 cd llm-in-tee
 
-cargo build
+cargo build --features nitro-enclaves
 ```
 
 ## Run in TEE
