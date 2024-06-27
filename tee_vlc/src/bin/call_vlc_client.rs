@@ -2,7 +2,6 @@ use std::{
     env,
     fmt::Write,
     future::pending,
-    // net::{IpAddr, SocketAddr},
     time::Duration,
 };
 

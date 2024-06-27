@@ -15,3 +15,6 @@ Cargo.lock
 
 # IDE
 .vscode
+
+# Other
+llama-2-7b-chat*

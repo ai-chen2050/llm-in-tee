@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+llama_cpp_rs = "0.3.0"
+anyhow = { version = "1.0.79", features = ["backtrace"] }
 
 [lints]
 workspace = true
