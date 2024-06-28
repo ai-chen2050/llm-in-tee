@@ -1,9 +1,11 @@
 [workspace]
 members = [
     ".",
+    "common",
     "tee_vlc",
     "tee_llm",
-    "runers", "common",
+    "runers",
+    # "llama_cpp-rs/crates/llama_cpp",
 ]
 
 exclude = []
@@ -37,3 +39,5 @@ incremental = true
 inherits = "release"
 
 [workspace.dependencies]
+futures = "0.3.30"
+tokio = "1.36.0"

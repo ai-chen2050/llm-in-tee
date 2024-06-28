@@ -12,6 +12,8 @@ Other TEE instances maybe support for later. For examples,
 * AMD SEV 
 * or Nvidia Confidential Computing GPU
 
+The Llm-In-TEE use the [llama.cpp](https://github.com/ggerganov/llama.cpp) as it's large AI models executor.
+
 Second core module verifiable logic clock is an implementation of Chronos's TEE backend.   
 
 The Chronos is a novel logical clock system designed for open networks with Byzantine participants, offering improved fault tolerance and performance. Please refer to [hetu chronos](https://github.com/hetu-project/chronos) repository for more details.
@@ -28,6 +30,8 @@ The Chronos is a novel logical clock system designed for open networks with Byza
 git clone https://github.com/ai-chen2050/llm-in-tee.git
 
 cd llm-in-tee
+
+git submodule update --init --recursive
 
 cargo build --features nitro-enclaves
 ```
