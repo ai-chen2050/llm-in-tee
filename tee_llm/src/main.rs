@@ -24,10 +24,16 @@ fn main() -> anyhow::Result<()> {
     )
     .expect("Could not load model");
 
+    let session_params = SessionParams {
+        n_ctx: 4096,
+        n_batch: 2048,
+        n_ubatch: 512,
+        ..Default::default()
+    };
     // A `LlamaModel` holds the weights shared across many _sessions_; while your model may be
     // several gigabytes large, a session is typically a few dozen to a hundred megabytes!
     let mut ctx = model
-        .create_session(SessionParams::default())
+        .create_session(session_params)
         .expect("Failed to create session");
 
     // You can feed anything that implements `AsRef<[u8]>` into the model's context.
@@ -40,7 +46,7 @@ fn main() -> anyhow::Result<()> {
 
     let sampler_stages = vec![
         SamplerStage::RepetitionPenalty {
-            repetition_penalty: 1.1,
+            repetition_penalty: 1.0,
             frequency_penalty: 0.0,
             presence_penalty: 0.0,
             last_n: 64,
@@ -48,10 +54,11 @@ fn main() -> anyhow::Result<()> {
         SamplerStage::TopK(40),
         SamplerStage::TopP(0.95),
         SamplerStage::MinP(0.05),
+        SamplerStage::Typical(1.0),
         SamplerStage::Temperature(0.0),
     ];
 
-    let sampler = StandardSampler::new_softmax(sampler_stages, 1);
+    let sampler = StandardSampler::new_mirostat_v2(sampler_stages, 0, 0.1, 5.0);
     // `ctx.start_completing_with` creates a worker thread that generates tokens. When the completion
     // handle is dropped, tokens stop generating!
     let completions = ctx
