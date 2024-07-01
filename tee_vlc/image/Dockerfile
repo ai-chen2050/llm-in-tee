@@ -1,5 +1,5 @@
 FROM alpine:latest
 
-COPY nitro-enclaves-clock-validator .
+COPY tee_vlc .
 
-CMD ./nitro-enclaves-clock-validator
+CMD ./tee_vlc

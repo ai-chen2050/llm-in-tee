@@ -30,8 +30,6 @@ async fn main() -> anyhow::Result<()> {
             "artifact",
             "--features",
             "nitro-enclaves,tikv-jemallocator",
-            "--package",
-            "tee_vlc",
             "--bin",
             "tee_vlc",
         ])

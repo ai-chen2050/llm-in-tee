@@ -33,7 +33,7 @@ cd llm-in-tee
 
 git submodule update --init --recursive
 
-cargo build --features nitro-enclaves
+cargo build --features nitro-enclaves --release
 ```
 
 ## Run in TEE

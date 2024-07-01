@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use bincode::Options;
+// use std::io;
+// use std::io::Write;
 
 use common::{
     crypto::DigestHash,
@@ -74,10 +76,13 @@ impl NitroEnclavesClock {
         Ok(Some(document))
     }
 
-    pub async fn run(port: u32) -> anyhow::Result<()> {
-        let handler: HandleFn = Arc::new(|buf, nsm, pcrs, write_sender| {
+    pub fn worker() -> HandleFn {
+        Arc::new(|buf, nsm, pcrs, write_sender| {
             Box::pin(async move {
-                println!("Received buffer: {:?}", buf);
+                // IO action in tee is severe delay, just debug
+                // println!("Received buffer: {:?}", buf);
+                // let _ = io::stdout().flush();
+    
                 if let Err(err) = async {
                     let Update(prev, merged, id) = bincode::options()
                         .deserialize::<Update<NitroEnclavesClock>>(&buf)?;
@@ -93,6 +98,7 @@ impl NitroEnclavesClock {
                     let plain = prev
                         .plain
                         .update(merged.iter().map(|clock| &clock.plain), id);
+                    
                     // relies on the fact that different clocks always hash into different
                     // digests, hopefully true
                     let user_data = plain.sha256().to_fixed_bytes().to_vec();
@@ -111,177 +117,16 @@ impl NitroEnclavesClock {
                 }
                 Ok(())
             })
-        });
+        })
+    }
+
+    pub async fn run(port: u32) -> anyhow::Result<()> {
+        let handler: HandleFn = NitroEnclavesClock::worker();
 
         NitroSecure::run(port, handler).await
     }
 }
 
-#[derive(Debug)]
-pub struct NitroSecureModule(pub i32);
-
-#[cfg(feature = "nitro-enclaves")]
-impl NitroSecureModule {
-    fn new() -> anyhow::Result<Self> {
-        let fd = aws_nitro_enclaves_nsm_api::driver::nsm_init();
-        anyhow::ensure!(fd >= 0);
-        Ok(Self(fd))
-    }
-
-    fn process_attestation(&self, user_data: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-        use aws_nitro_enclaves_nsm_api::api::Request::Attestation;
-        // some silly code to avoid explicitly mention `serde_bytes::ByteBuf`
-        let mut request = Attestation {
-            user_data: Some(Default::default()),
-            nonce: None,
-            public_key: None,
-        };
-        let Attestation {
-            user_data: Some(buf),
-            ..
-        } = &mut request
-        else {
-            unreachable!()
-        };
-        buf.extend(user_data);
-        match aws_nitro_enclaves_nsm_api::driver::nsm_process_request(self.0, request) {
-            aws_nitro_enclaves_nsm_api::api::Response::Attestation { document } => Ok(document),
-            aws_nitro_enclaves_nsm_api::api::Response::Error(err) => anyhow::bail!("{err:?}"),
-            _ => anyhow::bail!("unimplemented"),
-        }
-    }
-
-    fn describe_pcr(&self, index: u16) -> anyhow::Result<Vec<u8>> {
-        use aws_nitro_enclaves_nsm_api::api::Request::DescribePCR;
-        match aws_nitro_enclaves_nsm_api::driver::nsm_process_request(self.0, DescribePCR { index })
-        {
-            aws_nitro_enclaves_nsm_api::api::Response::DescribePCR { lock: _, data } => Ok(data),
-            aws_nitro_enclaves_nsm_api::api::Response::Error(err) => anyhow::bail!("{err:?}"),
-            _ => anyhow::bail!("unimplemented"),
-        }
-    }
-
-    pub async fn run() -> anyhow::Result<()> {
-        use std::os::fd::AsRawFd;
-
-        use bincode::Options;
-        use nix::sys::socket::{
-            bind, listen, socket, AddressFamily, Backlog, SockFlag, SockType, VsockAddr,
-        };
-        use tokio::{
-            io::{AsyncReadExt as _, AsyncWriteExt as _},
-            sync::mpsc::unbounded_channel,
-        };
-        use DigestHash as _;
-
-        let nsm = std::sync::Arc::new(Self::new()?);
-        let pcrs = [
-            nsm.describe_pcr(0)?,
-            nsm.describe_pcr(1)?,
-            nsm.describe_pcr(2)?,
-        ];
-
-        let socket_fd = socket(
-            AddressFamily::Vsock,
-            SockType::Stream,
-            SockFlag::empty(),
-            None,
-        )?;
-        bind(socket_fd.as_raw_fd(), &VsockAddr::new(0xFFFFFFFF, 5005))?;
-        // theoretically this is the earliest point to entering Tokio world, but i don't want to go
-        // unsafe with `FromRawFd`, and Tokio don't have a `From<OwnedFd>` yet
-        listen(&socket_fd, Backlog::new(64)?)?;
-        let socket = std::os::unix::net::UnixListener::from(socket_fd);
-        socket.set_nonblocking(true)?;
-        let socket = tokio::net::UnixListener::from_std(socket)?;
-
-        loop {
-            let (stream, _) = socket.accept().await?;
-            let (mut read_half, mut write_half) = stream.into_split();
-            let (write_sender, mut write_receiver) = unbounded_channel::<Vec<_>>();
-
-            let mut write_session = tokio::spawn(async move {
-                while let Some(buf) = write_receiver.recv().await {
-                    write_half.write_u64_le(buf.len() as _).await?;
-                    write_half.write_all(&buf).await?;
-                }
-                anyhow::Ok(())
-            });
-            let nsm = nsm.clone();
-            let pcrs = pcrs.clone();
-            let mut read_session = tokio::spawn(async move {
-                loop {
-                    let task = async {
-                        let len = read_half.read_u64_le().await?;
-                        let mut buf = vec![0; len as _];
-                        read_half.read_exact(&mut buf).await?;
-                        anyhow::Ok(buf)
-                    };
-                    let buf = match task.await {
-                        Ok(buf) => buf,
-                        Err(err) => {
-                            warn!("{err}");
-                            return anyhow::Ok(());
-                        }
-                    };
-                    let nsm = nsm.clone();
-                    let pcrs = pcrs.clone();
-                    let write_sender = write_sender.clone();
-                    tokio::spawn(async move {
-                        if let Err(err) = async {
-                            let Update(prev, merged, id) = bincode::options()
-                                .deserialize::<Update<NitroEnclavesClock>>(&buf)?;
-                            for clock in [&prev].into_iter().chain(&merged) {
-                                if let Some(document) = clock.verify()? {
-                                    for (i, pcr) in pcrs.iter().enumerate() {
-                                        anyhow::ensure!(
-                                            document.pcrs.get(&i).map(|pcr| &**pcr) == Some(pcr)
-                                        )
-                                    }
-                                }
-                            }
-                            let plain = prev
-                                .plain
-                                .update(merged.iter().map(|clock| &clock.plain), id);
-                            // relies on the fact that different clocks always hash into different
-                            // digests, hopefully true
-                            let user_data = plain.sha256().to_fixed_bytes().to_vec();
-                            let document = nsm.process_attestation(user_data)?;
-                            let updated = NitroEnclavesClock {
-                                plain,
-                                document: Payload(document),
-                            };
-                            let buf = bincode::options().serialize(&(id, updated))?;
-                            write_sender.send(buf)?;
-                            Ok(())
-                        }
-                        .await
-                        {
-                            warn!("{err}")
-                        }
-                    });
-                }
-            });
-            loop {
-                let result = tokio::select! {
-                    result = &mut read_session, if !read_session.is_finished() => result,
-                    result = &mut write_session, if !write_session.is_finished() => result,
-                    else => break,
-                };
-                if let Err(err) = result.map_err(Into::into).and_then(std::convert::identity) {
-                    warn!("{err}")
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "nitro-enclaves")]
-impl Drop for NitroSecureModule {
-    fn drop(&mut self) {
-        aws_nitro_enclaves_nsm_api::driver::nsm_exit(self.0)
-    }
-}
 
 pub async fn nitro_enclaves_portal_session(
     cid: u32,
