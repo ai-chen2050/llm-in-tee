@@ -1,5 +1,9 @@
+use std::sync::Arc;
+use bincode::Options;
+
 use common::{
     crypto::DigestHash,
+    nitro_secure::{HandleFn, NitroSecureModule as NitroSecure},
     ordinary_clock::{Clock, LamportClock, OrdinaryClock},
     types::Payload,
 };
@@ -68,6 +72,48 @@ impl NitroEnclavesClock {
                 == Some(&self.plain.sha256().to_fixed_bytes()[..])
         );
         Ok(Some(document))
+    }
+
+    pub async fn run(port: u32) -> anyhow::Result<()> {
+        let handler: HandleFn = Arc::new(|buf, nsm, pcrs, write_sender| {
+            Box::pin(async move {
+                println!("Received buffer: {:?}", buf);
+                if let Err(err) = async {
+                    let Update(prev, merged, id) = bincode::options()
+                        .deserialize::<Update<NitroEnclavesClock>>(&buf)?;
+                    for clock in [&prev].into_iter().chain(&merged) {
+                        if let Some(document) = clock.verify()? {
+                            for (i, pcr) in pcrs.iter().enumerate() {
+                                anyhow::ensure!(
+                                    document.pcrs.get(&i).map(|pcr| &**pcr) == Some(pcr)
+                                )
+                            }
+                        }
+                    }
+                    let plain = prev
+                        .plain
+                        .update(merged.iter().map(|clock| &clock.plain), id);
+                    // relies on the fact that different clocks always hash into different
+                    // digests, hopefully true
+                    let user_data = plain.sha256().to_fixed_bytes().to_vec();
+                    let document = nsm.process_attestation(user_data)?;
+                    let updated = NitroEnclavesClock {
+                        plain,
+                        document: Payload(document),
+                    };
+                    let buf = bincode::options().serialize(&(id, updated))?;
+                    write_sender.send(buf)?;
+                    Ok(())
+                }
+                .await
+                {
+                    warn!("{err}")
+                }
+                Ok(())
+            })
+        });
+
+        NitroSecure::run(port, handler).await
     }
 }
 
@@ -291,8 +337,8 @@ pub async fn nitro_enclaves_portal_session(
 #[cfg(feature = "nitro-enclaves")]
 pub mod impls {
 
-    use crate::{Clocked, Verify};
     use super::NitroEnclavesClock;
+    use crate::{Clocked, Verify};
 
     impl<M: Send + Sync + 'static> Verify<()> for Clocked<M, NitroEnclavesClock> {
         fn verify_clock(&self, _: usize, (): &()) -> anyhow::Result<()> {
@@ -301,4 +347,3 @@ pub mod impls {
         }
     }
 }
-
