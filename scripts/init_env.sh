@@ -2,7 +2,7 @@
 
 echo "Install TEE Dependency"
 sudo sudo dnf upgrade 
-sudo dnf install -y tmux htop openssl-devel perl clang docker-24.0.5-1.amzn2023.0.3 aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
+sudo dnf install -y tmux htop openssl-devel wget curl perl clang docker-24.0.5-1.amzn2023.0.3 aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
 sudo usermod -aG ne ec2-user
 sudo usermod -aG docker ec2-user
 sudo systemctl restart nitro-enclaves-allocator.service

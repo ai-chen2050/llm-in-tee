@@ -10,7 +10,7 @@ First step, you could refer to [Run in TEE](./README.md#run-in-tee) for preparin
 
 ```bash
 cd image
-cargo run --bin run-solo-enclave -- . --features nitro-enclaves
+cargo run --bin run-solo-vlc-enclave -- . --features nitro-enclaves
 ```
 
 ## Testing

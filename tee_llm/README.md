@@ -26,5 +26,16 @@ A specific large model in tee listens for requests and processes them.
 
 First step, you could refer to [Run in TEE](./README.md#run-in-tee) for preparing environment.
 
-### Build TEE Images
+### Run VLC TEE Images
+
+```bash
+cd image
+cargo run --bin run-solo-llm-enclave -- . --features nitro-enclaves
+```
+
+## Testing
+
+```bash
+cargo run --bin call_llm_client --features nitro-enclaves -- 1
+```
 
