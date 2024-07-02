@@ -1,5 +1,6 @@
-use std::io;
+use std::{env, io};
 use std::io::Write;
+use std::time::{Duration, Instant};
 
 use llama_cpp::standard_sampler::{SamplerStage, StandardSampler};
 use llama_cpp::{
@@ -7,7 +8,10 @@ use llama_cpp::{
 };
 
 fn main() -> anyhow::Result<()> {
+    let start = Instant::now();
+
     let model_path = std::env::args().nth(1);
+    let thread_num = std::env::args().nth(2).ok_or ("missing thread num").unwrap().parse::<u32>().unwrap();
 
     // llama format
     let mut params = LlamaParams::default();
@@ -28,6 +32,7 @@ fn main() -> anyhow::Result<()> {
         n_ctx: 4096,
         n_batch: 2048,
         n_ubatch: 512,
+        n_threads: thread_num,
         ..Default::default()
     };
 
@@ -78,5 +83,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    let duration = start.elapsed();
+    println!("\n\n Duration passed: {:?}", duration);
     Ok(())
 }
