@@ -12,7 +12,7 @@ pub fn new_runtime(worker_threads: Option<usize>, max_blocking_threads: Option<u
         // we use both IO and Time tokio utilities
         .enable_all()
         // give our threads a descriptive name (they'll be numbered too)
-        .thread_name("operator-tokio-thread");
+        .thread_name("node-tokio-thread");
 
     if let Some(worker_threads) = worker_threads {
         builder.worker_threads(worker_threads);

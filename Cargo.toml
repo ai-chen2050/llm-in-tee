@@ -1,11 +1,15 @@
 [workspace]
 members = [
     ".",
-    "common",
+    "crates/types",
+    "crates/common",
+    "crates/websocket",
+    "crates/tools",
     "tee_vlc",
-    "tee_llm",
-    "runers",
-    # "llama_cpp-rs/crates/llama_cpp",
+    "tee_llm", 
+    "operator/node_api",
+    "operator/db_sql",
+    "operator/runer",
 ]
 
 exclude = []
