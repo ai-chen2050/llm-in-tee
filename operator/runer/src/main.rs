@@ -102,7 +102,7 @@ fn construct_node_config(config_path: PathBuf) -> config::OperatorConfig {
             std::process::exit(ErrorCodes::PROCESS_EXIT);
         }
         Err(OperatorConfigError::SerializationError(_)) => {
-            error!("config file can't be serialize, bad yaml format");
+            error!("config file can't be serialize, bad yaml format or incomplete");
             std::process::exit(ErrorCodes::PROCESS_EXIT);
         }
         Err(OperatorConfigError::IllegalNodeId) => {

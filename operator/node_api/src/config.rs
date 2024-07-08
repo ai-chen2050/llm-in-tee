@@ -27,7 +27,6 @@ pub struct DbConfig {
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct NetworkConfig {
-    pub inner_p2p: String,          // vlc server bind udp socket
     pub rest_url: String,
     pub ws_url: String
 }

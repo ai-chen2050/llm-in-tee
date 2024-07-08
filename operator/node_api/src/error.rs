@@ -10,6 +10,9 @@ impl ErrorCodes {
     pub const SERIALIZATION_ERROR: u32 = 1002;
     pub const IO_ERROR: u32 = 1003;
     pub const ILLEGAL_NODE_ID: u32 = 1004;
+    
+    pub const API_FAIL_TO_JSON: u32 = 2001;
+    
 }
 
 pub type OperatorConfigResult<T> = Result<T, OperatorConfigError>;
@@ -40,6 +43,18 @@ pub enum OperatorConfigError {
     )]
     IllegalNodeId,
 }
+
+pub type OperatorAPIResult<T> = Result<T, OperatorAPIError>;
+
+#[derive(Error, Debug)]
+pub enum OperatorAPIError {
+    #[error(
+        "Error failed to serialize struct to JSON (Error Code: {})",
+        ErrorCodes::API_FAIL_TO_JSON
+    )]
+    APIFailToJson,
+}
+
 
 pub type OperatorResult<T> = Result<T, OperatorError>;
 

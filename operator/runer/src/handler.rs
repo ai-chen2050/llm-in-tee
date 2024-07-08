@@ -1,11 +1,5 @@
-use crate::{
-    operator::OperatorArc,
-};
-use crate::api::read::index;
-use std::{
-    net::SocketAddr, sync::Arc,
-    // sync::atomic::{AtomicUsize, Ordering}, 
-};
+use crate::api::read::{index, status};
+use crate::operator::OperatorArc;
 use actix_web::web;
 use tracing::*;
 
@@ -13,4 +7,5 @@ use tracing::*;
 
 pub fn router(cfg: &mut web::ServiceConfig) {
     cfg.service(index);
+    cfg.service(status);
 }

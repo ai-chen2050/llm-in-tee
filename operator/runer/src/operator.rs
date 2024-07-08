@@ -2,13 +2,11 @@ use crate::{node_factory::OperatorFactory, storage::Storage};
 use node_api::config::OperatorConfig;
 use std::collections::{BTreeMap, VecDeque};
 use std::{cmp, sync::Arc};
-use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 use tracing::*;
 
 pub struct Operator {
     pub config: Arc<OperatorConfig>,
-    pub socket: UdpSocket,
     pub storage: Storage,
     pub state: RwLock<ServerState>,
 }
