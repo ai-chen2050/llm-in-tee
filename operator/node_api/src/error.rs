@@ -12,6 +12,9 @@ impl ErrorCodes {
     pub const ILLEGAL_NODE_ID: u32 = 1004;
     
     pub const API_FAIL_TO_JSON: u32 = 2001;
+
+    pub const OP_CUSTOM_ERROR: u32 = 3001;
+    pub const OP_FAIL_REGISTER: u32 = 3002;
     
 }
 
@@ -59,4 +62,16 @@ pub enum OperatorAPIError {
 pub type OperatorResult<T> = Result<T, OperatorError>;
 
 #[derive(Error, Debug)]
-pub enum OperatorError {}
+pub enum OperatorError {
+    #[error(
+        "Error: register to dispatcher failed, detail: {0} (Error Code: {})",
+        ErrorCodes::OP_CUSTOM_ERROR
+    )]
+    CustomError(String),
+
+    #[error(
+        "Error: register to dispatcher failed, detail: {0} (Error Code: {})",
+        ErrorCodes::OP_FAIL_REGISTER
+    )]
+    OPSetupRegister(#[from] reqwest::Error),
+}

@@ -51,8 +51,6 @@ async fn async_main() {
         }
     }
 
-    // Todo: detect tee enclave service, if not, and exit
-
     // setup node
     if let Some(config_path) = args.config_path {
         help_info = false;
@@ -102,7 +100,7 @@ fn construct_node_config(config_path: PathBuf) -> config::OperatorConfig {
             std::process::exit(ErrorCodes::PROCESS_EXIT);
         }
         Err(OperatorConfigError::SerializationError(_)) => {
-            error!("config file can't be serialize, bad yaml format or incomplete");
+            error!("config file can't be serialize, bad yaml format or incomplete field");
             std::process::exit(ErrorCodes::PROCESS_EXIT);
         }
         Err(OperatorConfigError::IllegalNodeId) => {

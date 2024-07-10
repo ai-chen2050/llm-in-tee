@@ -8,8 +8,13 @@ db:
 net:
   rest_url: "0.0.0.0:8080"
   ws_url: "0.0.0.0:8052"
+  dispatcher_url: "0.0.0.0:8053"
+  tee_llm_cid: 15
+  tee_llm_port: 5005
 node:
   node_id: "9c8c905be05044ebeea814781ce9a0580c8fd26228e4605c7e6424c62161f70d"
   cache_msg_maximum: 500
+  ai_models:
+    - "llama-2-7b-chat.Q4_0.gguf"
 api:
   read_maximum: 20

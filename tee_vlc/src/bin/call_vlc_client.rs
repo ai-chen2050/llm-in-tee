@@ -38,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
         (
             tokio::spawn(nitro_enclaves_portal_session(
                 CID,
+                5006,
                 update_receiver,
                 update_ok_sender,
             )),

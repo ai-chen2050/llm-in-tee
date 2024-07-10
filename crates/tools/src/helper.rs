@@ -1,5 +1,5 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-
+use sysinfo::System;
 use sha2::{Sha256, Digest};
 
 pub fn get_time_ms() -> u128 {
@@ -28,6 +28,18 @@ pub fn validate_nodeid(id: &str) -> bool {
 
     true
 }
+
+/// return machine using status: (cpu_percent, memory_total, memory_used)
+pub fn machine_used() -> (f32, u64, u64) {
+    let mut system: System = System::new_all();
+    system.refresh_all();
+
+    let cpu_percent = system.global_cpu_info().cpu_usage();
+    let memory_total = system.total_memory();
+    let memory_used = system.used_memory();
+    (cpu_percent, memory_total, memory_used)
+}
+
 
 #[cfg(test)]
 mod test {

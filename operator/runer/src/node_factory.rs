@@ -1,13 +1,15 @@
 use crate::api::read::not_found;
+use crate::api::request::register_worker;
 use crate::handler::router;
-use crate::operator::{ServerState, Operator, OperatorArc};
+use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
-use node_api::config::OperatorConfig;
-use node_api::error::OperatorResult;
-use std::sync::Arc;
 use actix_web::{middleware, web, App, HttpServer};
+use node_api::config::OperatorConfig;
+use node_api::error::{OperatorError, OperatorResult};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tracing::info;
 
 #[derive(Default)]
 pub struct OperatorFactory {
@@ -57,7 +59,29 @@ impl OperatorFactory {
             .expect("Failed to run server");
     }
 
+    pub async fn prepare_setup(config: &OperatorConfig) -> OperatorResult<()> {
+        // Todo: detect tee enclave service, if not, and exit
+
+        // register status to dispatcher service
+        let response = register_worker(config)
+            .await
+            .map_err(OperatorError::OPSetupRegister)?;
+
+        if response.status().is_success() {
+            info!("register worker to dispatcher success!")
+        } else {
+            return Err(OperatorError::CustomError(format!(
+                "Error: register to dispatcher failed, resp code {}",
+                response.status()
+            )));
+        }
+
+        Ok(())
+    }
+
     pub async fn initialize_node(self) -> OperatorResult<OperatorArc> {
+        OperatorFactory::prepare_setup(&self.config).await?;
+
         let arc_operator = OperatorFactory::create_operator(self.config.clone()).await;
 
         OperatorFactory::create_actix_node(arc_operator.clone()).await;

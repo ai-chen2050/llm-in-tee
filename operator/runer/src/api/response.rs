@@ -11,11 +11,14 @@ pub struct Response {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct RespStatus {
+pub struct WorkerStatus {
     pub node_id: String,
+    pub model_names: Vec<String>,
     pub cpu_percent: String,
     pub mem_total: String,
     pub mem_used: String,
+    pub speed: u32,
+    pub queue_length: u32,
 }
 
 pub fn make_resp_json(
@@ -24,7 +27,6 @@ pub fn make_resp_json(
     reason: String,
     data: Value,
 ) -> web::Json<Response> {
-    
     web::Json(Response {
         request_id,
         success,

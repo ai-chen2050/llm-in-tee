@@ -130,6 +130,7 @@ impl NitroEnclavesClock {
 
 pub async fn nitro_enclaves_portal_session(
     cid: u32,
+    port: u32,
     mut events: UnboundedReceiver<Update<NitroEnclavesClock>>,
     sender: UnboundedSender<UpdateOk<NitroEnclavesClock>>,
 ) -> anyhow::Result<()> {
@@ -148,7 +149,7 @@ pub async fn nitro_enclaves_portal_session(
     // this one is blocking, but should be instant, hopefully
     {
         let _span = tracing::debug_span!("connect").entered();
-        connect(fd.as_raw_fd(), &VsockAddr::new(cid, 5005))?
+        connect(fd.as_raw_fd(), &VsockAddr::new(cid, port))?
     }
     let stream = std::os::unix::net::UnixStream::from(fd);
     stream.set_nonblocking(true)?;

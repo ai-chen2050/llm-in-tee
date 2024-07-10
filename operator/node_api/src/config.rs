@@ -28,13 +28,18 @@ pub struct DbConfig {
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct NetworkConfig {
     pub rest_url: String,
-    pub ws_url: String
+    pub ws_url: String,
+    pub dispatcher_url: String,
+    pub tee_llm_cid: u32
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct NodeConfig {
     pub node_id: Option<String>,
     pub cache_msg_maximum: u64,
+    
+    #[serde(default)]
+    pub ai_models: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
