@@ -14,6 +14,7 @@ net:
 node:
   node_id: "9c8c905be05044ebeea814781ce9a0580c8fd26228e4605c7e6424c62161f70d"
   cache_msg_maximum: 500
+  heartbeat_interval: 300
   ai_models:
     - "llama-2-7b-chat.Q4_0.gguf"
 api:

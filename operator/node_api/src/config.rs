@@ -37,6 +37,7 @@ pub struct NetworkConfig {
 pub struct NodeConfig {
     pub node_id: Option<String>,
     pub cache_msg_maximum: u64,
+    pub heartbeat_interval: u64,
     
     #[serde(default)]
     pub ai_models: Vec<String>,

@@ -1,5 +1,5 @@
 use crate::api::read::not_found;
-use crate::api::request::register_worker;
+use crate::api::request::{periodic_heartbeat_task, register_worker };
 use crate::handler::router;
 use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
@@ -75,6 +75,10 @@ impl OperatorFactory {
                 response.status()
             )));
         }
+
+        // periodic heartbeat task
+        let config_clone = config.clone();
+        tokio::spawn(periodic_heartbeat_task(config_clone));
 
         Ok(())
     }
