@@ -70,9 +70,15 @@ async fn register_heartbeat(config: &OperatorConfig) -> Result<reqwest::Response
 pub async fn periodic_heartbeat_task(config: OperatorConfig) {
     let interval = Duration::from_secs(config.node.heartbeat_interval);
     loop {
-        let result = register_heartbeat(&config).await;
-        if let Err(err) = result {
-            error!("periodic heartbeat request error, {}", err);
+        match register_heartbeat(&config).await {
+            Ok(response) => {
+                debug!("Response status: {}", response.status());
+                match response.text().await {
+                    Ok(body) => debug!("Response body: {}", body),
+                    Err(err) => error!("Failed to read response body, {}", err),
+                }
+            }
+            Err(err) => error!("periodic heartbeat request error, {}", err),
         }
         sleep(interval).await;
     }

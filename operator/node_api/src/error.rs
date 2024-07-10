@@ -15,6 +15,7 @@ impl ErrorCodes {
 
     pub const OP_CUSTOM_ERROR: u32 = 3001;
     pub const OP_FAIL_REGISTER: u32 = 3002;
+    pub const OP_CONNECT_TEE_ERROR: u32 = 3003;
     
 }
 
@@ -74,4 +75,10 @@ pub enum OperatorError {
         ErrorCodes::OP_FAIL_REGISTER
     )]
     OPSetupRegister(#[from] reqwest::Error),
+
+    #[error(
+        "Error: connect to tee service failed, detail: {0}  (Error Code: {})",
+        ErrorCodes::OP_CONNECT_TEE_ERROR
+    )]
+    OPConnectTEEError(String),
 }

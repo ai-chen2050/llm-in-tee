@@ -187,6 +187,7 @@ impl NitroEnclavesLlm {
         NitroSecure::run(port, handler).await
     }
 }
+
 pub async fn nitro_enclaves_portal_session(
     cid: u32,
     port: u32,
@@ -236,5 +237,65 @@ pub async fn nitro_enclaves_portal_session(
         result = write_session => return result?,
         result = read_session => result??
     }
+    anyhow::bail!("unreachable")
+}
+
+pub fn try_connection(cid: u32, port: u32) -> anyhow::Result<tokio::net::UnixStream> {
+    use std::os::fd::AsRawFd;
+    use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, VsockAddr};
+
+    let fd = socket(
+        AddressFamily::Vsock,
+        SockType::Stream,
+        SockFlag::empty(),
+        None,
+    )?;
+
+    {
+        let _span = tracing::debug_span!("connect").entered();
+        connect(fd.as_raw_fd(), &VsockAddr::new(cid, port))?
+    }
+
+    let stream = std::os::unix::net::UnixStream::from(fd);
+    stream.set_nonblocking(true)?;
+    
+    let stream = tokio::net::UnixStream::from_std(stream)?;
+    Ok(stream)
+}
+
+pub async fn start_listening(
+    stream: tokio::net::UnixStream,
+    mut events: UnboundedReceiver<PromptReq>,
+    sender: UnboundedSender<AnswerResp>,
+) -> anyhow::Result<()> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let (mut read_half, mut write_half) = stream.into_split();
+
+    let write_session = tokio::spawn(async move {
+        while let Some(prompt) = events.recv().await {
+            let buf = bincode::options().serialize(&prompt)?;
+            write_half.write_u64_le(buf.len() as _).await?;
+            write_half.write_all(&buf).await?;
+        }
+        anyhow::Ok(())
+    });
+
+    let read_session = tokio::spawn(async move {
+        loop {
+            let len = read_half.read_u64_le().await?;
+            let mut buf = vec![0; len as _];
+            read_half.read_exact(&mut buf).await?;
+            sender.send(bincode::options().deserialize(&buf)?)?
+        }
+        #[allow(unreachable_code)] // for type hinting
+        anyhow::Ok(())
+    });
+
+    tokio::select! {
+        result = write_session => return result?,
+        result = read_session => result??
+    }
+
     anyhow::bail!("unreachable")
 }

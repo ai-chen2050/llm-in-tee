@@ -1,5 +1,5 @@
 use crate::api::read::not_found;
-use crate::api::request::{periodic_heartbeat_task, register_worker };
+use crate::api::request::{periodic_heartbeat_task, register_worker};
 use crate::handler::router;
 use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
@@ -7,8 +7,11 @@ use actix_web::{middleware, web, App, HttpServer};
 use node_api::config::OperatorConfig;
 use node_api::error::{OperatorError, OperatorResult};
 use std::sync::Arc;
+use tee_llm::nitro_llm::{
+    start_listening, try_connection, AnswerResp, PromptReq,
+};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 use tracing::info;
 
 #[derive(Default)]
@@ -26,7 +29,11 @@ impl OperatorFactory {
         self
     }
 
-    pub async fn create_operator(config: OperatorConfig) -> OperatorArc {
+    pub async fn create_operator(
+        config: OperatorConfig,
+        tee_inference_sender: UnboundedSender<PromptReq>,
+        tee_answer_receiver: UnboundedReceiver<AnswerResp>,
+    ) -> OperatorArc {
         let cfg = Arc::new(config.clone());
         let node_id = config.node.node_id.clone().unwrap_or_default();
         let state = RwLock::new(ServerState::new(node_id, cfg.node.cache_msg_maximum));
@@ -35,6 +42,8 @@ impl OperatorFactory {
             config: cfg,
             storage,
             state,
+            tee_inference_sender,
+            tee_answer_receiver,
         };
 
         Arc::new(operator)
@@ -59,8 +68,26 @@ impl OperatorFactory {
             .expect("Failed to run server");
     }
 
-    pub async fn prepare_setup(config: &OperatorConfig) -> OperatorResult<()> {
-        // Todo: detect tee enclave service, if not, and exit
+    async fn prepare_setup(
+        config: &OperatorConfig,
+    ) -> OperatorResult<(UnboundedSender<PromptReq>, UnboundedReceiver<AnswerResp>)> {
+        // detect and connect tee enclave service, if not, and exit
+        let (prompt_sender, prompt_receiver) = unbounded_channel::<PromptReq>();
+        let (answer_ok_sender, mut answer_ok_receiver) = unbounded_channel::<AnswerResp>();
+
+        let (tee_cid, tee_port) = (config.net.tee_llm_cid, config.net.tee_llm_port);
+        let result = try_connection(tee_cid, tee_port);
+        if let Err(err) = result {
+            return Err(OperatorError::OPConnectTEEError(err.to_string()));
+        } else {
+            info!("connect llm tee service successed!");
+        }
+
+        tokio::spawn(start_listening(
+            result.unwrap(),
+            prompt_receiver,
+            answer_ok_sender,
+        ));
 
         // register status to dispatcher service
         let response = register_worker(config)
@@ -68,7 +95,10 @@ impl OperatorFactory {
             .map_err(OperatorError::OPSetupRegister)?;
 
         if response.status().is_success() {
-            info!("register worker to dispatcher success!")
+            info!(
+                "register worker to dispatcher success! response_body: {:?}",
+                response.text().await
+            )
         } else {
             return Err(OperatorError::CustomError(format!(
                 "Error: register to dispatcher failed, resp code {}",
@@ -80,13 +110,19 @@ impl OperatorFactory {
         let config_clone = config.clone();
         tokio::spawn(periodic_heartbeat_task(config_clone));
 
-        Ok(())
+        Ok((prompt_sender, answer_ok_receiver))
     }
 
     pub async fn initialize_node(self) -> OperatorResult<OperatorArc> {
-        OperatorFactory::prepare_setup(&self.config).await?;
+        let (prompt_sender, answer_ok_receiver) =
+            OperatorFactory::prepare_setup(&self.config).await?;
 
-        let arc_operator = OperatorFactory::create_operator(self.config.clone()).await;
+        let arc_operator = OperatorFactory::create_operator(
+            self.config.clone(),
+            prompt_sender,
+            answer_ok_receiver,
+        )
+        .await;
 
         OperatorFactory::create_actix_node(arc_operator.clone()).await;
 

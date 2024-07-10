@@ -1,5 +1,7 @@
 use crate::{node_factory::OperatorFactory, storage::Storage};
 use node_api::config::OperatorConfig;
+use tee_llm::nitro_llm::{AnswerResp, PromptReq};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use std::collections::{BTreeMap, VecDeque};
 use std::{cmp, sync::Arc};
 use tokio::sync::RwLock;
@@ -9,6 +11,8 @@ pub struct Operator {
     pub config: Arc<OperatorConfig>,
     pub storage: Storage,
     pub state: RwLock<ServerState>,
+    pub tee_inference_sender: UnboundedSender<PromptReq>, 
+    pub tee_answer_receiver: UnboundedReceiver<AnswerResp>, 
 }
 
 pub type OperatorArc = Arc<Operator>;

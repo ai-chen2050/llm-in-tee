@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use tools::tokio_static;
 use tracing::*;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::EnvFilter;
 
 #[derive(StructOpt)]
 struct OperatorCli {
@@ -33,9 +33,11 @@ fn main() {
 }
 
 async fn async_main() {
-    let fmt_subscriber = FmtSubscriber::new();
-    tracing::subscriber::set_global_default(fmt_subscriber)
-        .expect("set default tracing subscriber fail");
+    // set default log level: INFO
+    let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(rust_log))
+        .init();
 
     info!("start operator server");
     let mut help_info = true;
@@ -115,6 +117,6 @@ fn construct_node_config(config_path: PathBuf) -> config::OperatorConfig {
 
 async fn build_operator(config: OperatorConfig) -> OperatorArc {
     Operator::operator_factory().set_config(config).initialize_node().await.map_err(|e| {
-        panic!("Failed to build operator due to error [{:?}]", e);
+        panic!("Failed to build operator due to error, detail {:?}", e);
     }).unwrap()
 }
