@@ -1,5 +1,5 @@
 use crate::api::read::not_found;
-use crate::api::request::{periodic_heartbeat_task, register_worker};
+use crate::api::request::{answer_callback_task, periodic_heartbeat_task, register_worker};
 use crate::handler::router;
 use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
@@ -7,9 +7,7 @@ use actix_web::{middleware, web, App, HttpServer};
 use node_api::config::OperatorConfig;
 use node_api::error::{OperatorError, OperatorResult};
 use std::sync::Arc;
-use tee_llm::nitro_llm::{
-    start_listening, try_connection, AnswerResp, PromptReq,
-};
+use tee_llm::nitro_llm::{tee_start_listening, try_connection, AnswerResp, PromptReq};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::RwLock;
 use tracing::info;
@@ -32,7 +30,6 @@ impl OperatorFactory {
     pub async fn create_operator(
         config: OperatorConfig,
         tee_inference_sender: UnboundedSender<PromptReq>,
-        tee_answer_receiver: UnboundedReceiver<AnswerResp>,
     ) -> OperatorArc {
         let cfg = Arc::new(config.clone());
         let node_id = config.node.node_id.clone().unwrap_or_default();
@@ -43,7 +40,6 @@ impl OperatorFactory {
             storage,
             state,
             tee_inference_sender,
-            tee_answer_receiver,
         };
 
         Arc::new(operator)
@@ -70,10 +66,10 @@ impl OperatorFactory {
 
     async fn prepare_setup(
         config: &OperatorConfig,
-    ) -> OperatorResult<(UnboundedSender<PromptReq>, UnboundedReceiver<AnswerResp>)> {
+    ) -> OperatorResult<UnboundedSender<PromptReq>> {
         // detect and connect tee enclave service, if not, and exit
         let (prompt_sender, prompt_receiver) = unbounded_channel::<PromptReq>();
-        let (answer_ok_sender, mut answer_ok_receiver) = unbounded_channel::<AnswerResp>();
+        let (answer_ok_sender, answer_ok_receiver) = unbounded_channel::<AnswerResp>();
 
         let (tee_cid, tee_port) = (config.net.tee_llm_cid, config.net.tee_llm_port);
         let result = try_connection(tee_cid, tee_port);
@@ -83,7 +79,7 @@ impl OperatorFactory {
             info!("connect llm tee service successed!");
         }
 
-        tokio::spawn(start_listening(
+        tokio::spawn(tee_start_listening(
             result.unwrap(),
             prompt_receiver,
             answer_ok_sender,
@@ -109,18 +105,21 @@ impl OperatorFactory {
         // periodic heartbeat task
         let config_clone = config.clone();
         tokio::spawn(periodic_heartbeat_task(config_clone));
+        
+        // answer callback
+        let config_clone = config.clone();
+        tokio::spawn(answer_callback_task(config_clone, answer_ok_receiver));
 
-        Ok((prompt_sender, answer_ok_receiver))
+        Ok(prompt_sender)
     }
 
     pub async fn initialize_node(self) -> OperatorResult<OperatorArc> {
-        let (prompt_sender, answer_ok_receiver) =
+        let prompt_sender =
             OperatorFactory::prepare_setup(&self.config).await?;
 
         let arc_operator = OperatorFactory::create_operator(
             self.config.clone(),
             prompt_sender,
-            answer_ok_receiver,
         )
         .await;
 

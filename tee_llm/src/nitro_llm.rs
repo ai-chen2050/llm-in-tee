@@ -1,7 +1,7 @@
 use bincode::Options;
-use std::{sync::Arc, time::Instant};
 use std::io;
 use std::io::Write;
+use std::{sync::Arc, time::Instant};
 
 use common::{
     crypto::DigestHash,
@@ -10,26 +10,28 @@ use common::{
     types::Payload,
 };
 use serde::{Deserialize, Serialize};
-use tracing::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tracing::*;
 
 use llama_cpp::standard_sampler::{SamplerStage, StandardSampler};
-use llama_cpp::{
-    LlamaModel, LlamaParams, SessionParams
-};
+use llama_cpp::{LlamaModel, LlamaParams, SessionParams};
 
-#[derive(Debug, Clone,Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptReq {
+    pub request_id: String,
     pub model_name: String,
     pub prompt: String,
-    pub n_ctx: u32, // contex maximum token
+    pub n_ctx: u32,       // contex maximum token
     pub n_predict: usize, // maximum predict token
     pub n_threads: u32,
     // pub clock: NitroEnclavesClock, // to be done
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, derive_more::AsRef)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnswerResp {
+    pub request_id: String,
+    pub model_name: String,
+    pub prompt: String,
     pub answer: String,
     pub elapsed: u64,
     pub document: Payload,
@@ -70,7 +72,7 @@ impl AnswerResp {
                 == Some(&self.answer.sha256().to_fixed_bytes()[..])
         );
         Ok(Some(document))
-    }    
+    }
 }
 
 #[cfg(feature = "nitro-enclaves")]
@@ -80,12 +82,8 @@ impl NitroEnclavesLlm {
         let params = LlamaParams::default();
 
         // Create a model from anything that implements `AsRef<Path>`:
-        let model = LlamaModel::load_from_file(
-            req.model_name
-                .clone(),
-                params,
-        )
-        .expect("Could not load model");
+        let model = LlamaModel::load_from_file(req.model_name.clone(), params)
+            .expect("Could not load model");
 
         let session_params = SessionParams {
             n_ctx: req.n_ctx,
@@ -102,8 +100,7 @@ impl NitroEnclavesLlm {
             .expect("Failed to create session");
 
         // You can feed anything that implements `AsRef<[u8]>` into the model's context.
-        ctx.advance_context(req.prompt)
-            .unwrap();
+        ctx.advance_context(req.prompt).unwrap();
 
         // LLMs are typically used to predict the next word in a sequence. Let's generate some tokens!
         let mut decoded_tokens = 0;
@@ -123,7 +120,7 @@ impl NitroEnclavesLlm {
         ];
 
         let sampler = StandardSampler::new_mirostat_v2(sampler_stages, 0, 0.1, 5.0);
-        
+
         // `ctx.start_completing_with` creates a worker thread that generates tokens. When the completion
         // handle is dropped, tokens stop generating!
         let completions = ctx
@@ -150,20 +147,22 @@ impl NitroEnclavesLlm {
         Arc::new(|buf, nsm, pcrs, write_sender| {
             Box::pin(async move {
                 if let Err(err) = async {
-                    let req: PromptReq = bincode::options()
-                        .deserialize::<PromptReq>(&buf)?;
-                    
+                    let req: PromptReq = bincode::options().deserialize::<PromptReq>(&buf)?;
+
                     anyhow::ensure!(true);
                     let start = Instant::now();
-                    let answer = NitroEnclavesLlm::run_task(req)?;
+                    let answer = NitroEnclavesLlm::run_task(req.clone())?;
                     let duration = start.elapsed();
-                    
+
                     // println!("\n\n Duration passed: {:?}", duration);
                     // let _ = io::stdout().flush();
-                    
+
                     let user_data = answer.sha256().to_fixed_bytes().to_vec();
                     let document = nsm.process_attestation(user_data)?;
                     let answer_doc = AnswerResp {
+                        request_id: req.request_id,
+                        model_name: req.model_name,
+                        prompt: req.prompt.clone(),
                         answer,
                         elapsed: duration.as_secs(),
                         document: Payload(document),
@@ -241,8 +240,8 @@ pub async fn nitro_enclaves_portal_session(
 }
 
 pub fn try_connection(cid: u32, port: u32) -> anyhow::Result<tokio::net::UnixStream> {
-    use std::os::fd::AsRawFd;
     use nix::sys::socket::{connect, socket, AddressFamily, SockFlag, SockType, VsockAddr};
+    use std::os::fd::AsRawFd;
 
     let fd = socket(
         AddressFamily::Vsock,
@@ -258,12 +257,12 @@ pub fn try_connection(cid: u32, port: u32) -> anyhow::Result<tokio::net::UnixStr
 
     let stream = std::os::unix::net::UnixStream::from(fd);
     stream.set_nonblocking(true)?;
-    
+
     let stream = tokio::net::UnixStream::from_std(stream)?;
     Ok(stream)
 }
 
-pub async fn start_listening(
+pub async fn tee_start_listening(
     stream: tokio::net::UnixStream,
     mut events: UnboundedReceiver<PromptReq>,
     sender: UnboundedSender<AnswerResp>,

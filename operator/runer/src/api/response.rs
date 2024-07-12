@@ -5,8 +5,8 @@ use serde_json::Value;
 #[derive(Serialize, Deserialize)]
 pub struct Response {
     pub request_id: String,
-    pub success: bool,
-    pub reason: String,
+    pub code: u32,
+    pub msg: String,
     pub data: Value,
 }
 
@@ -23,14 +23,14 @@ pub struct WorkerStatus {
 
 pub fn make_resp_json(
     request_id: String,
-    success: bool,
-    reason: String,
+    code: u32,
+    msg: String,
     data: Value,
 ) -> web::Json<Response> {
     web::Json(Response {
         request_id,
-        success,
-        reason,
+        code,
+        msg,
         data,
     })
 }

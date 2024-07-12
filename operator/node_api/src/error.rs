@@ -16,6 +16,7 @@ impl ErrorCodes {
     pub const OP_CUSTOM_ERROR: u32 = 3001;
     pub const OP_FAIL_REGISTER: u32 = 3002;
     pub const OP_CONNECT_TEE_ERROR: u32 = 3003;
+    pub const OP_SEND_PROMPT_ERROR: u32 = 3004;
     
 }
 
@@ -81,4 +82,10 @@ pub enum OperatorError {
         ErrorCodes::OP_CONNECT_TEE_ERROR
     )]
     OPConnectTEEError(String),
+
+    #[error(
+        "Error: send promtp to tee service failed, detail: {0}  (Error Code: {})",
+        ErrorCodes::OP_SEND_PROMPT_ERROR
+    )]
+    OPSendPromptError(String),
 }

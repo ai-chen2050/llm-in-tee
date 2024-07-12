@@ -1,6 +1,7 @@
 use crate::api::response::{make_resp_json, Response, WorkerStatus};
 use crate::operator::OperatorArc;
 use actix_web::{body, get, post, web, Error, HttpRequest, HttpResponse, Result};
+use node_api::error::ErrorCodes;
 use node_api::error::OperatorAPIError::APIFailToJson;
 use serde::{Deserialize, Serialize};
 use tools::helper::machine_used;
@@ -9,14 +10,13 @@ pub async fn not_found(_: web::Data<OperatorArc>, request: HttpRequest) -> Strin
     format!("Not support api {}", request.uri())
 }
 
-/// GET API ZONE
-
+/// READ API
 #[get("/")]
 async fn index() -> String {
-    format!("Welcome to visit aos operator node's API!")
+    format!("Welcome to visit aos operator node! \n")
 }
 
-#[get("/v1/status")]
+#[get("/api/v1/status")]
 async fn status(_req: HttpRequest, op: web::Data<OperatorArc>) -> web::Json<Response> {
     let (cpu_percent, memory_total, memory_used) = machine_used();
 
@@ -35,17 +35,10 @@ async fn status(_req: HttpRequest, op: web::Data<OperatorArc>) -> web::Json<Resp
     match json_data {
         Err(_err) => make_resp_json(
             String::new(),
-            false,
+            ErrorCodes::API_FAIL_TO_JSON,
             APIFailToJson.to_string(),
             serde_json::Value::default(),
         ),
-        Ok(json_value) => make_resp_json(String::new(), true, String::new(), json_value),
+        Ok(json_value) => make_resp_json(String::new(), 0, String::new(), json_value),
     }
 }
-
-// POST API ZONE
-// post json body, and deserialize `Info` from request's body
-// #[post("/")]
-// async fn index(info: web::Json<Status>) -> String {
-//     format!("Welcome {} to aos operator's API!", info.username)
-// }

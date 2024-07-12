@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use blake2::Blake2b;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use rand::{rngs::OsRng, Rng};
 
 // Hashed based digest deriving solution
 // There's no well known solution for deriving digest methods for general
@@ -232,6 +233,56 @@ impl Crypto {
         Ok(crypto)
     }
 
+pub fn new_random(
+        flavor: CryptoFlavor,
+    ) -> anyhow::Result<Self> {
+        let crypto = match flavor {
+            CryptoFlavor::Plain => {
+                let mut rng = rand::thread_rng();
+                let secret_key = (0..32).map(|_| rng.gen()).collect::<Vec<u8>>();
+                let public_key = secret_key.iter().map(|byte| format!("{:02x}", byte)).collect();
+                Self {
+                    public_keys: vec![PublicKey::Plain(public_key)],
+                    provider: CryptoProvider::Insecure(format!("{:?}", secret_key)),
+                }
+            },
+            CryptoFlavor::Secp256k1 => {
+                let secp = secp256k1::Secp256k1::new();
+                let (secret_key, public_key) = secp.generate_keypair(&mut OsRng);
+                Self {
+                    public_keys: vec![PublicKey::Secp256k1(public_key)],
+                    provider: CryptoProvider::Secp256k1(Secp256k1Crypto {
+                        secret_key,
+                        secp,
+                    }),
+                }
+            },
+            CryptoFlavor::Schnorrkel => {
+                let mini_secret_key = schnorrkel::MiniSecretKey::generate_with(&mut OsRng);
+                let keypair = mini_secret_key.expand_to_keypair(schnorrkel::ExpansionMode::Uniform);
+                Self {
+                    public_keys: vec![PublicKey::Schnorrkel(keypair.public)],
+                    provider: CryptoProvider::Schnorrkel(Box::new(peer::Crypto {
+                        keypair,
+                        context: schnorrkel::signing_context(b"default"),
+                    })),
+                }
+            }
+        };
+        Ok(crypto)
+    }
+
+    pub fn to_hex(&self) -> Option<(String, String)> {
+        match &self.provider {
+            CryptoProvider::Secp256k1(secp256k1_crypto) => {
+                let secret_key_hex = hex::encode(secp256k1_crypto.secret_key.secret_bytes());
+                let public_key_hex = hex::encode(secp256k1_crypto.secret_key.public_key(&secp256k1_crypto.secp).serialize());
+                Some((secret_key_hex, public_key_hex))
+            },
+            _ => None,
+        }
+    }
+
     pub fn sign<M: DigestHash>(&self, message: M) -> Verifiable<M> {
         match &self.provider {
             CryptoProvider::Insecure(signature) => Verifiable {
@@ -456,6 +507,17 @@ mod tests {
             bs: b"hello".to_vec(),
         };
         assert_ne!(foo.sha256(), Default::default());
+    }
+
+    #[test]
+    fn generate_keypair() {
+        let crypto = Crypto::new_random(CryptoFlavor::Secp256k1);
+        assert!(crypto.is_ok());
+        let crypto = crypto.unwrap();
+        println!("{:?}", crypto);
+        let keys = crypto.to_hex();
+        assert!(keys.is_some());
+        println!("{:?}", keys.unwrap());
     }
 
     #[test]

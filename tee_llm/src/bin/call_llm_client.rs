@@ -87,11 +87,12 @@ async fn bench_session(
 {   
     // fixed args for testing
     let req = PromptReq {
+        request_id: "todo!()".to_owned(),
         model_name: "./llama-2-7b-chat.Q4_0.gguf".to_owned(),
         prompt: "How to combine AI and blockchain?".to_owned(),
         n_ctx: 4096,
         n_predict: 128,
-        n_threads: 4,
+        n_threads: 4,   // todo: use value in tee env
     };
     
     for _ in 0..count {

@@ -28,7 +28,7 @@ pub struct DbConfig {
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct NetworkConfig {
     pub rest_url: String,
-    pub ws_url: String,
+    pub outer_url: String,
     pub dispatcher_url: String,
     pub tee_llm_cid: u32,
     pub tee_llm_port: u32

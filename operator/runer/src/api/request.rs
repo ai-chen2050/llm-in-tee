@@ -1,9 +1,13 @@
 use crate::api::response::WorkerStatus;
 use node_api::config::OperatorConfig;
+use node_api::error::OperatorError;
 use reqwest::Client as ReqwestClient;
-use tools::helper::machine_used;
+use serde::{Deserialize, Serialize};
+use tee_llm::nitro_llm::AnswerResp;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error};
+use tools::helper::machine_used;
+use tracing::{debug, error, info};
 
 #[derive(serde::Serialize)]
 pub struct RegisterWorkerReq {
@@ -20,6 +24,40 @@ pub struct RegisterHeartbeatReq {
     pub queue_length: u32,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct InferParams {
+    pub n_ctx: u32,
+    pub max_tokens: u32,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct QuestionReq {
+    pub request_id: String,
+    pub node_id: String,
+    pub model: String,
+    pub prompt: String,
+    pub params: InferParams,
+    pub prompt_hash: String,
+    pub signature: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AnswerCallbackReq {
+    request_id: String,
+    node_id: String,
+    model: String,
+    prompt: String,
+    answer: String,
+    elapsed: u64,
+    attestation: String,
+    attest_signature: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+struct HeartbeatResp {
+    exist: bool,
+}
+
 pub async fn register_worker(config: &OperatorConfig) -> Result<reqwest::Response, reqwest::Error> {
     let (cpu_percent, memory_total, memory_used) = machine_used();
 
@@ -34,7 +72,7 @@ pub async fn register_worker(config: &OperatorConfig) -> Result<reqwest::Respons
     };
 
     let body = RegisterWorkerReq {
-        worker_name: config.net.rest_url.clone(),
+        worker_name: config.net.outer_url.clone(),
         check_heart_beat: true,
         worker_status,
         multimodal: false,
@@ -42,7 +80,11 @@ pub async fn register_worker(config: &OperatorConfig) -> Result<reqwest::Respons
 
     let client = ReqwestClient::new();
     client
-        .post(format!("{}{}", config.net.dispatcher_url.clone(), "/register_worker"))
+        .post(format!(
+            "{}{}",
+            config.net.dispatcher_url.clone(),
+            "/register_worker"
+        ))
         .header("Content-Type", "application/json; charset=utf-8")
         .json(&body)
         .send()
@@ -53,14 +95,18 @@ async fn register_heartbeat(config: &OperatorConfig) -> Result<reqwest::Response
     debug!("Registering heartbeat to dispatcher...");
 
     let body = RegisterHeartbeatReq {
-        worker_name: config.net.rest_url.clone(),
+        worker_name: config.net.outer_url.clone(),
         node_id: config.node.node_id.clone().unwrap_or_default(),
         queue_length: 0,
     };
 
     let client = ReqwestClient::new();
     client
-        .post(format!("{}{}", config.net.dispatcher_url.clone(), "/receive_heart_beat"))
+        .post(format!(
+            "{}{}",
+            config.net.dispatcher_url.clone(),
+            "/receive_heart_beat"
+        ))
         .header("Content-Type", "application/json; charset=utf-8")
         .json(&body)
         .send()
@@ -74,13 +120,77 @@ pub async fn periodic_heartbeat_task(config: OperatorConfig) {
             Ok(response) => {
                 debug!("Response status: {}", response.status());
                 match response.text().await {
-                    Ok(body) => debug!("Response body: {}", body),
+                    Ok(body) => {
+                        debug!("Response body: {}", body);
+                        let json = serde_json::from_str(&body).unwrap_or_default();
+                        let data: HeartbeatResp = serde_json::from_value(json).unwrap_or_default();
+                        if !data.exist {
+                            let response = register_worker(&config).await.map_err(OperatorError::OPSetupRegister).unwrap();
+                            if response.status().is_success() {
+                                info!(
+                                    "register worker to dispatcher success! response_body: {:?}",
+                                    response.text().await
+                                )
+                            }
+                        }
+                    },
                     Err(err) => error!("Failed to read response body, {}", err),
                 }
             }
             Err(err) => error!("periodic heartbeat request error, {}", err),
         }
         sleep(interval).await;
+    }
+}
+
+async fn answer_callback(
+    config: &OperatorConfig,
+    answer: &AnswerResp,
+) -> Result<reqwest::Response, reqwest::Error> {
+    debug!("answer callback to dispatcher. answer = {:?}", answer);
+
+    let hex_attest = hex::encode(answer.document.0.clone());
+    let body = AnswerCallbackReq {
+        node_id: config.node.node_id.clone().unwrap_or_default(),
+        request_id: answer.request_id.clone(),
+        model: answer.model_name.clone(),
+        prompt: answer.prompt.clone(),
+        answer: answer.answer.clone(),
+        elapsed: answer.elapsed,
+        attestation: hex_attest,
+        attest_signature: "todo!()".to_string(),
+    };
+
+    let client = ReqwestClient::new();
+    client
+        .post(format!(
+            "{}{}",
+            config.net.dispatcher_url.clone(),
+            "/api/tee_callback"
+        ))
+        .header("Content-Type", "application/json; charset=utf-8")
+        .json(&body)
+        .send()
+        .await
+}
+
+pub async fn answer_callback_task(
+    config: OperatorConfig,
+    mut receiver: UnboundedReceiver<AnswerResp>,
+) {
+    loop {
+        if let Some(answer) = receiver.recv().await {
+            match answer_callback(&config, &answer).await {
+                Ok(response) => {
+                    debug!("Response status: {}", response.status());
+                    match response.text().await {
+                        Ok(body) => debug!("Response body: {}", body),
+                        Err(err) => error!("Failed to read response body, {}", err),
+                    }
+                }
+                Err(err) => error!("answer callback request error, {}", err),
+            }
+        }
     }
 }
 

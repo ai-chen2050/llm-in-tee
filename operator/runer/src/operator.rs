@@ -12,7 +12,6 @@ pub struct Operator {
     pub storage: Storage,
     pub state: RwLock<ServerState>,
     pub tee_inference_sender: UnboundedSender<PromptReq>, 
-    pub tee_answer_receiver: UnboundedReceiver<AnswerResp>, 
 }
 
 pub type OperatorArc = Arc<Operator>;

@@ -7,7 +7,7 @@ db:
   acquire_timeout: 60
 net:
   rest_url: "0.0.0.0:8080"
-  ws_url: "0.0.0.0:8052"
+  outer_url: "http://3.0.19.186:8080"
   dispatcher_url: "http://31.220.78.83:3000"
   tee_llm_cid: 15
   tee_llm_port: 5005
