@@ -4,7 +4,7 @@ use bincode::Options;
 // use std::io::Write;
 
 use common::{
-    crypto::DigestHash,
+    crypto::core::DigestHash,
     nitro_secure::{HandleFn, NitroSecureModule as NitroSecure},
     ordinary_clock::{Clock, LamportClock, OrdinaryClock},
     types::Payload,

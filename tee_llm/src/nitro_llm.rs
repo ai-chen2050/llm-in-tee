@@ -4,7 +4,7 @@ use std::io::Write;
 use std::{sync::Arc, time::Instant};
 
 use common::{
-    crypto::DigestHash,
+    crypto::core::DigestHash,
     nitro_secure::{HandleFn, NitroSecureModule as NitroSecure},
     ordinary_clock::{Clock, LamportClock, OrdinaryClock},
     types::Payload,

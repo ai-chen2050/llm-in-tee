@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use rand::{rngs::OsRng, Rng};
 
+
 // Hashed based digest deriving solution
 // There's no well known solution for deriving digest methods for general
 // structural data i.e. structs and enums (as far as I know), which means to
@@ -233,7 +234,7 @@ impl Crypto {
         Ok(crypto)
     }
 
-pub fn new_random(
+    pub fn new_random(
         flavor: CryptoFlavor,
     ) -> anyhow::Result<Self> {
         let crypto = match flavor {
