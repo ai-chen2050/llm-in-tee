@@ -1,9 +1,10 @@
-use std::path::PathBuf;
-use std::path::Path;
 use crate::error::{OperatorConfigError, OperatorConfigResult};
 use serde::Deserialize;
 use serde::Serialize;
-use tools::helper::validate_nodeid;
+use tools::helper::validate_addr;
+use std::path::Path;
+use std::path::PathBuf;
+use tools::helper::validate_key;
 
 /// Operator Node Config
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
@@ -21,7 +22,7 @@ pub struct DbConfig {
     pub pg_db_name: String,
     pub max_connect_pool: u32,
     pub min_connect_pool: u32,
-    pub connect_timeout: u64,  // seconds
+    pub connect_timeout: u64, // seconds
     pub acquire_timeout: u64,
 }
 
@@ -31,22 +32,23 @@ pub struct NetworkConfig {
     pub outer_url: String,
     pub dispatcher_url: String,
     pub tee_llm_cid: u32,
-    pub tee_llm_port: u32
+    pub tee_llm_port: u32,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct NodeConfig {
-    pub node_id: Option<String>,
+    pub node_id: String,
+    pub signer_key: String,
     pub cache_msg_maximum: u64,
     pub heartbeat_interval: u64,
-    
+
     #[serde(default)]
     pub ai_models: Vec<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]
 pub struct ApiConfig {
-   pub read_maximum: u64,
+    pub read_maximum: u64,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default)]
@@ -67,16 +69,21 @@ impl OperatorConfig {
             }
             _ => err.into(),
         })?;
-        
-        let config: OperatorConfig = serde_yaml::from_str(&config_yaml).map_err(OperatorConfigError::SerializationError)?;
+
+        let config: OperatorConfig =
+            serde_yaml::from_str(&config_yaml).map_err(OperatorConfigError::SerializationError)?;
         OperatorConfig::validate_config(&config)
     }
 
     pub fn validate_config(config: &OperatorConfig) -> OperatorConfigResult<OperatorConfig> {
-        if !validate_nodeid(&config.node.node_id.clone().unwrap_or_default()) {
+        if !validate_addr(&config.node.node_id.clone()) {
             return Err(OperatorConfigError::IllegalNodeId);
         }
-        
+
+        if !validate_key(&config.node.signer_key.clone()) {
+            return Err(OperatorConfigError::IllegalSignerKey);
+        }
+
         Ok(config.clone())
     }
 }

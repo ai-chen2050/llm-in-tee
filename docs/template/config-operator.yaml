@@ -12,7 +12,8 @@ net:
   tee_llm_cid: 15
   tee_llm_port: 5005
 node:
-  node_id: "9c8c905be05044ebeea814781ce9a0580c8fd26228e4605c7e6424c62161f70d"
+  node_id: "0x02a5592a6de1568f6efdc536da3ef887f98414cb"
+  signer_key: "77f4b2fbf3f32687f03d84d323bd5cb443f53b0fc338b51c24e319a520c87217"
   cache_msg_maximum: 500
   heartbeat_interval: 300
   ai_models:

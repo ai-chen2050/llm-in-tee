@@ -4,11 +4,13 @@ use crate::handler::router;
 use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
 use actix_web::{middleware, web, App, HttpServer};
+use alloy_primitives::hex::FromHex;
+use alloy_primitives::B256;
 use node_api::config::OperatorConfig;
 use node_api::error::{OperatorError, OperatorResult};
 use std::sync::Arc;
 use tee_llm::nitro_llm::{tee_start_listening, try_connection, AnswerResp, PromptReq};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -32,8 +34,9 @@ impl OperatorFactory {
         tee_inference_sender: UnboundedSender<PromptReq>,
     ) -> OperatorArc {
         let cfg = Arc::new(config.clone());
-        let node_id = config.node.node_id.clone().unwrap_or_default();
-        let state = RwLock::new(ServerState::new(node_id, cfg.node.cache_msg_maximum));
+        let node_id = config.node.node_id.clone();
+        let signer_key = B256::from_hex(config.node.signer_key.clone()).expect("decode signer key error");
+        let state = RwLock::new(ServerState::new(signer_key, node_id, cfg.node.cache_msg_maximum));
         let storage = storage::Storage::new(cfg.clone()).await;
         let operator = Operator {
             config: cfg,

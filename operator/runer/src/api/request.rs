@@ -1,12 +1,16 @@
 use crate::api::response::WorkerStatus;
+use alloy_wrapper::util::sign_message;
 use node_api::config::OperatorConfig;
 use node_api::error::OperatorError;
+use common::crypto::core::DigestHash;
+use tee_llm::nitro_llm::AnswerResp;
+use tools::helper::machine_used;
+use alloy_primitives::hex::FromHex;
+use alloy_primitives::B256;
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
-use tee_llm::nitro_llm::AnswerResp;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{sleep, Duration};
-use tools::helper::machine_used;
 use tracing::{debug, error, info};
 
 #[derive(serde::Serialize)]
@@ -60,9 +64,8 @@ struct HeartbeatResp {
 
 pub async fn register_worker(config: &OperatorConfig) -> Result<reqwest::Response, reqwest::Error> {
     let (cpu_percent, memory_total, memory_used) = machine_used();
-
     let worker_status = WorkerStatus {
-        node_id: config.node.node_id.clone().unwrap_or_default(),
+        node_id: config.node.node_id.clone(),
         model_names: config.node.ai_models.clone(),
         cpu_percent: format!("{:.2}%", cpu_percent),
         mem_total: format!("{} M", memory_total / 1024 / 1024),
@@ -96,7 +99,7 @@ async fn register_heartbeat(config: &OperatorConfig) -> Result<reqwest::Response
 
     let body = RegisterHeartbeatReq {
         worker_name: config.net.outer_url.clone(),
-        node_id: config.node.node_id.clone().unwrap_or_default(),
+        node_id: config.node.node_id.clone(),
         queue_length: 0,
     };
 
@@ -148,17 +151,26 @@ async fn answer_callback(
     answer: &AnswerResp,
 ) -> Result<reqwest::Response, reqwest::Error> {
     debug!("answer callback to dispatcher. answer = {:?}", answer);
-
+    use DigestHash as _;
+    
+    let mut sig_hex = String::new();
     let hex_attest = hex::encode(answer.document.0.clone());
+    let signer_key = B256::from_hex(config.node.signer_key.clone());
+    if let Ok(signer_key) = signer_key {
+        let msg = hex_attest.sha256().to_fixed_bytes();
+        let sig = sign_message(signer_key.0, msg).unwrap_or_default();
+        sig_hex = sig.to_hex_bytes().to_string();
+    }
+
     let body = AnswerCallbackReq {
-        node_id: config.node.node_id.clone().unwrap_or_default(),
+        node_id: config.node.node_id.clone(),
         request_id: answer.request_id.clone(),
         model: answer.model_name.clone(),
         prompt: answer.prompt.clone(),
         answer: answer.answer.clone(),
         elapsed: answer.elapsed,
         attestation: hex_attest,
-        attest_signature: "todo!()".to_string(),
+        attest_signature: sig_hex,
     };
 
     let client = ReqwestClient::new();

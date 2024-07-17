@@ -10,6 +10,7 @@ impl ErrorCodes {
     pub const SERIALIZATION_ERROR: u32 = 1002;
     pub const IO_ERROR: u32 = 1003;
     pub const ILLEGAL_NODE_ID: u32 = 1004;
+    pub const ILLEGAL_SIGNER: u32 = 1005;
     
     pub const API_FAIL_TO_JSON: u32 = 2001;
 
@@ -43,10 +44,16 @@ pub enum OperatorConfigError {
     IoError(#[from] std::io::Error),
 
     #[error(
-        "Error nodeid illegal, must be hex format, and 64 bits (Error Code: {})",
+        "Error nodeid illegal, must be hex format, and 40 bits (Error Code: {})",
         ErrorCodes::ILLEGAL_NODE_ID
     )]
     IllegalNodeId,
+
+    #[error(
+        "Error signer illegal, must be hex format, and 64 bits (Error Code: {})",
+        ErrorCodes::ILLEGAL_SIGNER
+    )]
+    IllegalSignerKey,
 }
 
 pub type OperatorAPIResult<T> = Result<T, OperatorAPIError>;

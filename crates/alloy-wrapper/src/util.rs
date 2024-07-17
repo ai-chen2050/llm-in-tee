@@ -3,7 +3,8 @@ use alloy::{
     primitives::{keccak256, Address, Signature as Alloy_Signature, B256, U256},
     signers::{local::PrivateKeySigner, Signer, SignerSync},
 };
-use std::str::FromStr;
+// use const_hex::FromHex;
+use std::{io::Read, str::FromStr};
 use eyre::Result;
 use rand::rngs::OsRng;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};

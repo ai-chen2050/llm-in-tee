@@ -1,4 +1,5 @@
 use crate::{node_factory::OperatorFactory, storage::Storage};
+use alloy_primitives::B256;
 use node_api::config::OperatorConfig;
 use tee_llm::nitro_llm::{AnswerResp, PromptReq};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -26,6 +27,7 @@ impl Operator {
 #[derive(Debug, Clone)]
 pub struct ServerState {
     // pub clock_info: ClockInfo,
+    pub signer_key: B256,
     pub message_ids: VecDeque<String>,
     // pub cache_items: BTreeMap<String, ZMessage>,
     pub cache_maximum: u64,
@@ -33,8 +35,9 @@ pub struct ServerState {
 
 impl ServerState {
     /// Create a new server state.
-    pub fn new(node_id: String, cache_maximum: u64) -> Self {
+    pub fn new(signer: B256, node_id: String, cache_maximum: u64) -> Self {
         Self {
+            signer_key: signer,
             message_ids: VecDeque::new(),
             cache_maximum,
         }

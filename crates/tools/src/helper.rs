@@ -1,6 +1,6 @@
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::System;
-use sha2::{Sha256, Digest};
 
 pub fn get_time_ms() -> u128 {
     SystemTime::now()
@@ -17,7 +17,29 @@ pub fn sha256_str_to_hex(fclock_str: String) -> String {
     f_hash_hex
 }
 
-pub fn validate_nodeid(id: &str) -> bool {
+fn remove_0x_prefix(s: &str) -> &str {
+    if s.starts_with("0x") {
+        &s[2..]
+    } else {
+        s
+    }
+}
+
+pub fn validate_addr(id: &str) -> bool {
+    let id = remove_0x_prefix(id);
+    if id.len() != 40 {
+        return false;
+    }
+
+    if !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return false;
+    }
+
+    true
+}
+
+pub fn validate_key(id: &str) -> bool {
+    let id = remove_0x_prefix(id);
     if id.len() != 64 {
         return false;
     }
@@ -40,7 +62,6 @@ pub fn machine_used() -> (f32, u64, u64) {
     (cpu_percent, memory_total, memory_used)
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -48,9 +69,20 @@ mod test {
     #[test]
     fn test_validate_nodeid() {
         let id = "9c8c905be05044ebeea814781ce9a0580c8fd26228e4605c7e6424c62161f70d";
-        assert!(validate_nodeid(id));
+        assert!(validate_key(id));
 
         let id = "9c8c905be05044ebeea8";
-        assert!(!validate_nodeid(id));
+        assert!(!validate_key(id));
+    }
+
+    #[test]
+    fn test_remove_0x_prefix() {
+        let s1 = "0x123";
+        let s2 = "123";
+    
+        let result1 = remove_0x_prefix(s1);
+        let result2 = remove_0x_prefix(s2);
+
+        assert_eq!(result1, result2);
     }
 }
