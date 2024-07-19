@@ -12,6 +12,7 @@ pub struct OperatorConfig {
     pub db: DbConfig,
     pub net: NetworkConfig,
     pub node: NodeConfig,
+    pub chain: ChainConfig,
     pub api: ApiConfig,
 }
 
@@ -44,6 +45,12 @@ pub struct NodeConfig {
 
     #[serde(default)]
     pub ai_models: Vec<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug, Default)]
+pub struct ChainConfig {
+    pub chain_rpc_url: String,
+    pub vrf_range_contract: String,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]

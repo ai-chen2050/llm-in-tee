@@ -18,5 +18,8 @@ node:
   heartbeat_interval: 300
   ai_models:
     - "llama-2-7b-chat.Q4_0.gguf"
+chain:
+  chain_rpc_url: "https://rpc.holesky.ethpandaops.io"
+  vrf_range_contract: "0x0a24a30E5a8Ca9B790c7f57F0826159569e8dc4B"
 api:
   read_maximum: 20

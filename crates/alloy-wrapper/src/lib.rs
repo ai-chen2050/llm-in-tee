@@ -1,6 +1,7 @@
 /// reth-wrapper is toolboxs or middleware of reth interface.
 pub mod util;
 pub mod signature;
+pub mod contracts;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right

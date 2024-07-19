@@ -1,6 +1,5 @@
 use crate::api::read::{index, status};
 use crate::api::write::question;
-use crate::operator::OperatorArc;
 use actix_web::web;
 use tracing::*;
 

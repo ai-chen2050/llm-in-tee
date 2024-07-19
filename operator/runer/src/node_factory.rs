@@ -6,8 +6,15 @@ use crate::storage;
 use actix_web::{middleware, web, App, HttpServer};
 use alloy_primitives::hex::FromHex;
 use alloy_primitives::B256;
+use alloy_wrapper::contracts::vrf_range::new_vrf_range_backend;
 use node_api::config::OperatorConfig;
-use node_api::error::{OperatorError, OperatorResult};
+use node_api::error::OperatorError;
+use node_api::error::{
+    OperatorError::{
+        OPDecodeSignerKeyError, OPNewVrfRangeContractError
+    }, 
+    OperatorResult
+};
 use std::sync::Arc;
 use tee_llm::nitro_llm::{tee_start_listening, try_connection, AnswerResp, PromptReq};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
@@ -32,11 +39,16 @@ impl OperatorFactory {
     pub async fn create_operator(
         config: OperatorConfig,
         tee_inference_sender: UnboundedSender<PromptReq>,
-    ) -> OperatorArc {
+    ) -> OperatorResult<OperatorArc> {
         let cfg = Arc::new(config.clone());
         let node_id = config.node.node_id.clone();
-        let signer_key = B256::from_hex(config.node.signer_key.clone()).expect("decode signer key error");
-        let state = RwLock::new(ServerState::new(signer_key, node_id, cfg.node.cache_msg_maximum));
+        let signer_key = B256::from_hex(config.node.signer_key.clone()).map_err(OPDecodeSignerKeyError)?;
+        let vrf_contract = 
+                new_vrf_range_backend(&config.chain.chain_rpc_url, &config.chain.vrf_range_contract)
+                .map_err(OPNewVrfRangeContractError)?;
+        
+        let server_state = ServerState::new(signer_key, vrf_contract, node_id, cfg.node.cache_msg_maximum);
+        let state = RwLock::new(server_state);
         let storage = storage::Storage::new(cfg.clone()).await;
         let operator = Operator {
             config: cfg,
@@ -45,7 +57,7 @@ impl OperatorFactory {
             tee_inference_sender,
         };
 
-        Arc::new(operator)
+        Ok(Arc::new(operator))
     }
 
     async fn create_actix_node(arc_operator: OperatorArc) {
@@ -124,7 +136,7 @@ impl OperatorFactory {
             self.config.clone(),
             prompt_sender,
         )
-        .await;
+        .await?;
 
         OperatorFactory::create_actix_node(arc_operator.clone()).await;
 

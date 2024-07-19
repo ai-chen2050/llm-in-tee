@@ -19,7 +19,7 @@ async fn question(
 ) -> web::Json<Response> {
     info!("Receive request, body = {:?}", quest);
 
-    // todo: validate parameter and  signature
+    // todo: validate parameter and signature
     if !quest.signature.is_empty() && !quest.prompt_hash.is_empty() {
         let addr = recover_signer_alloy(quest.signature.clone(), &quest.prompt_hash);
         if let Err(err) = addr {

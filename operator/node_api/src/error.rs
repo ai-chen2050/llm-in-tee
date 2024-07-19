@@ -18,6 +18,8 @@ impl ErrorCodes {
     pub const OP_FAIL_REGISTER: u32 = 3002;
     pub const OP_CONNECT_TEE_ERROR: u32 = 3003;
     pub const OP_SEND_PROMPT_ERROR: u32 = 3004;
+    pub const OP_DECODE_SIGNER_KEY_ERROR: u32 = 3005;
+    pub const OP_NEW_VRF_RANGE_CONTRACT_ERROR: u32 = 3006;
     
 }
 
@@ -73,7 +75,7 @@ pub type OperatorResult<T> = Result<T, OperatorError>;
 #[derive(Error, Debug)]
 pub enum OperatorError {
     #[error(
-        "Error: register to dispatcher failed, detail: {0} (Error Code: {})",
+        "Error: some error happened, detail: {0} (Error Code: {})",
         ErrorCodes::OP_CUSTOM_ERROR
     )]
     CustomError(String),
@@ -95,4 +97,16 @@ pub enum OperatorError {
         ErrorCodes::OP_SEND_PROMPT_ERROR
     )]
     OPSendPromptError(String),
+
+    #[error(
+        "Error: decode signer private key error failed, detail: {0}  (Error Code: {})",
+        ErrorCodes::OP_DECODE_SIGNER_KEY_ERROR
+    )]
+    OPDecodeSignerKeyError(#[from] alloy_primitives::hex::FromHexError),
+
+    #[error(
+        "Error: new vrf range contract failed, detail: {0}  (Error Code: {})",
+        ErrorCodes::OP_NEW_VRF_RANGE_CONTRACT_ERROR
+    )]
+    OPNewVrfRangeContractError(#[from] eyre::ErrReport),
 }
