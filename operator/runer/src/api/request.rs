@@ -30,7 +30,8 @@ pub struct RegisterHeartbeatReq {
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct InferParams {
-    pub n_ctx: u32,
+    pub temperature: f32,
+    pub top_p: f32,
     pub max_tokens: u32,
 }
 
@@ -63,11 +64,12 @@ struct HeartbeatResp {
 }
 
 pub async fn register_worker(config: &OperatorConfig) -> Result<reqwest::Response, reqwest::Error> {
-    let (cpu_percent, memory_total, memory_used) = machine_used();
+    let (cpu_percent, cpu_nums, memory_total, memory_used) = machine_used();
     let worker_status = WorkerStatus {
         node_id: config.node.node_id.clone(),
         model_names: config.node.ai_models.clone(),
         cpu_percent: format!("{:.2}%", cpu_percent),
+        cpu_nums: format!("{} cores", cpu_nums),
         mem_total: format!("{} M", memory_total / 1024 / 1024),
         mem_used: format!("{} M", memory_used / 1024 / 1024),
         speed: 1,
@@ -150,11 +152,11 @@ async fn answer_callback(
     config: &OperatorConfig,
     answer: &AnswerResp,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    debug!("answer callback to dispatcher. answer = {:?}", answer);
+    info!("answer callback to dispatcher. answer = {:?}", answer);
     use DigestHash as _;
     
     let mut sig_hex = String::new();
-    let hex_attest = hex::encode(answer.document.0.clone());
+    let hex_attest = base64::encode(answer.document.0.clone());
     let signer_key = B256::from_hex(config.node.signer_key.clone());
     if let Ok(signer_key) = signer_key {
         let msg = hex_attest.sha256().to_fixed_bytes();
@@ -223,6 +225,7 @@ mod tests {
                 queue_length: 0,
                 node_id: "todo!()".to_string(),
                 cpu_percent: "todo!()".to_string(),
+                cpu_nums: "todo!()".to_string(),
                 mem_total: "todo!()".to_string(),
                 mem_used: "todo!()".to_string(),
             },

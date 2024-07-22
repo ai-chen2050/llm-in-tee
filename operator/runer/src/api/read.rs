@@ -18,12 +18,13 @@ async fn index() -> String {
 
 #[get("/api/v1/status")]
 async fn status(_req: HttpRequest, op: web::Data<OperatorArc>) -> web::Json<Response> {
-    let (cpu_percent, memory_total, memory_used) = machine_used();
+    let (cpu_percent, cpu_nums, memory_total, memory_used) = machine_used();
 
     let resp_data = WorkerStatus {
         node_id: op.config.node.node_id.clone(),
         model_names: op.config.node.ai_models.clone(),
         cpu_percent: format!("{:.2}%", cpu_percent),
+        cpu_nums: format!("{} cores", cpu_nums),
         mem_total: format!("{} M", memory_total / 1024 / 1024),
         mem_used: format!("{} M", memory_used / 1024 / 1024),
         speed: 1,

@@ -4,13 +4,14 @@ members = [
     "crates/types",
     "crates/common",
     "crates/websocket",
-    "crates/tools",
     "crates/alloy-wrapper",
+    "crates/tools",
+    "crates/vrf",
     "tee_vlc",
     "tee_llm", 
     "operator/node_api",
     "operator/db_sql",
-    "operator/runer", 
+    "operator/runer",
 ]
 
 exclude = []

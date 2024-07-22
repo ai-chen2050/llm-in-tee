@@ -1,4 +1,5 @@
 use bincode::Options;
+use tools::helper::machine_used;
 use std::io;
 use std::io::Write;
 use std::{sync::Arc, time::Instant};
@@ -21,9 +22,10 @@ pub struct PromptReq {
     pub request_id: String,
     pub model_name: String,
     pub prompt: String,
-    pub n_ctx: u32,       // contex maximum token
+    pub temperature: f32,
+    pub top_p: f32,       // top p
     pub n_predict: usize, // maximum predict token
-    pub n_threads: u32,
+    // pub n_threads: u32,
     // pub clock: NitroEnclavesClock, // to be done
 }
 
@@ -84,12 +86,12 @@ impl NitroEnclavesLlm {
         // Create a model from anything that implements `AsRef<Path>`:
         let model = LlamaModel::load_from_file(req.model_name.clone(), params)
             .expect("Could not load model");
-
+        let cpu_nums = machine_used().1;
         let session_params = SessionParams {
-            n_ctx: req.n_ctx,
+            n_ctx: 4096,
             n_batch: 2048,
             n_ubatch: 512,
-            n_threads: req.n_threads,
+            n_threads: cpu_nums as u32,
             ..Default::default()
         };
 
@@ -113,10 +115,10 @@ impl NitroEnclavesLlm {
                 last_n: 64,
             },
             SamplerStage::TopK(40),
-            SamplerStage::TopP(0.95),
+            SamplerStage::TopP(req.top_p), // 0.95
             SamplerStage::MinP(0.05),
             SamplerStage::Typical(1.0),
-            SamplerStage::Temperature(0.0),
+            SamplerStage::Temperature(req.temperature),
         ];
 
         let sampler = StandardSampler::new_mirostat_v2(sampler_stages, 0, 0.1, 5.0);

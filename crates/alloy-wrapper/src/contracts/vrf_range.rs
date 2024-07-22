@@ -37,7 +37,7 @@ pub async fn get_num_operators(contract: OperatorRangeContract) -> Result<ruint:
     Ok(_0)
 }
 
-pub async fn operator_range_by_seed(
+pub async fn get_operator_range_by_seed(
     contract: OperatorRangeContract,
     random_seed: u64,
 ) -> Result<Vec<Address>> {
@@ -48,3 +48,21 @@ pub async fn operator_range_by_seed(
     debug!("All aos operator is {:?}", _0);
     Ok(_0)
 }
+
+pub async fn get_range_by_address(
+    contract: OperatorRangeContract,
+    query_addr: Address,
+) -> Result<(U256, U256)> {
+    let OperatorRangeManager::operatorRangesReturn { start, end } =
+        contract.operatorRanges(query_addr).call().await?;
+
+    debug!("Operator {:?} ragnes: {:?}-{:?}", query_addr, start, end);
+
+    Ok((start, end))
+}
+
+
+
+
+
+    

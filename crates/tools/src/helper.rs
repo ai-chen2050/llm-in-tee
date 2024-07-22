@@ -52,14 +52,14 @@ pub fn validate_key(id: &str) -> bool {
 }
 
 /// return machine using status: (cpu_percent, memory_total, memory_used)
-pub fn machine_used() -> (f32, u64, u64) {
+pub fn machine_used() -> (f32, usize, u64, u64) {
     let mut system: System = System::new_all();
     system.refresh_all();
-
     let cpu_percent = system.global_cpu_info().cpu_usage();
+    let cpu_nums = system.cpus().len();
     let memory_total = system.total_memory();
     let memory_used = system.used_memory();
-    (cpu_percent, memory_total, memory_used)
+    (cpu_percent, cpu_nums, memory_total, memory_used)
 }
 
 #[cfg(test)]
@@ -84,5 +84,11 @@ mod test {
         let result2 = remove_0x_prefix(s2);
 
         assert_eq!(result1, result2);
+    }
+
+    #[test]
+    fn test_machine_used() {
+        let ma = machine_used();
+        println!("{:?}", ma);
     }
 }

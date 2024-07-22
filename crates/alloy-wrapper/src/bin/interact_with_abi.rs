@@ -1,5 +1,5 @@
 use alloy::{
-    primitives::U256,
+    primitives::{U256, address},
     providers::ProviderBuilder, sol,
 };
 use eyre::Result;
@@ -24,6 +24,10 @@ async fn main() -> Result<()> {
         provider,
     );
 
+    // let register_addr = address!("02a5592a6de1568f6efdc536da3ef887f98414cb");
+    // let OperatorRangeManager::registerOperatorReturn { } =
+    //     contract.registerOperator(register_addr, U256::from(10), U256::from(10000)).call().await?;
+
     let OperatorRangeManager::getNumOperatorsReturn { _0 } =
         contract.getNumOperators().call().await?;
 
@@ -34,6 +38,12 @@ async fn main() -> Result<()> {
         contract.getOperatorsInRange(number_value).call().await?;
 
     println!("All aos operator is {:?}", _0);
+
+    let query_addr = address!("cbee70d449ac3421138fb21cccd156456958baa4");
+    let OperatorRangeManager::operatorRangesReturn { start, end } =
+        contract.operatorRanges(query_addr).call().await?;
+
+    println!("Operator 0xcbee70d449ac3421138fb21cccd156456958baa4 ragnes: {:?}-{:?}", start, end);
 
     Ok(())
 }

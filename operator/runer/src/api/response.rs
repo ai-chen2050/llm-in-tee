@@ -15,6 +15,7 @@ pub struct WorkerStatus {
     pub node_id: String,
     pub model_names: Vec<String>,
     pub cpu_percent: String,
+    pub cpu_nums: String,
     pub mem_total: String,
     pub mem_used: String,
     pub speed: u32,

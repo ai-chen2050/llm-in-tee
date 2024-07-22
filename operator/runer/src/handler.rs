@@ -1,7 +1,6 @@
 use crate::api::read::{index, status};
 use crate::api::write::question;
 use actix_web::web;
-use tracing::*;
 
 // static MESSAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
 

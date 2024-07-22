@@ -90,9 +90,10 @@ async fn bench_session(
         request_id: "todo!()".to_owned(),
         model_name: "./llama-2-7b-chat.Q4_0.gguf".to_owned(),
         prompt: "How to combine AI and blockchain?".to_owned(),
-        n_ctx: 4096,
+        top_p: 0.95,
+        temperature: 0.0,
         n_predict: 128,
-        n_threads: 4,   // todo: use value in tee env
+        // n_threads: 4,   // deprecated: use value in tee env
     };
     
     for _ in 0..count {

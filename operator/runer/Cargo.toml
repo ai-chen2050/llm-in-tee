@@ -12,6 +12,7 @@ tee_llm ={version = "0.1.0", path = "../../tee_llm" }
 alloy-wrapper = { path = "../../crates/alloy-wrapper"}
 structopt = "0.3.11"
 tracing = "0.1.40"
+base64 = "0.13"
 tracing-subscriber = "0.3.18"
 tokio = { version = "1.36.0", features = ["full"] }
 sea-orm = { version = "0.12.15", features = [ 

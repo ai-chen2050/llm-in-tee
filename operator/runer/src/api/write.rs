@@ -8,7 +8,7 @@ use node_api::error::{OperatorAPIError::APIFailToJson, OperatorError::OPSendProm
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tee_llm::nitro_llm::PromptReq;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 /// WRITE API
 // question input a prompt, and async return success, the answer callback later
@@ -23,7 +23,7 @@ async fn question(
     if !quest.signature.is_empty() && !quest.prompt_hash.is_empty() {
         let addr = recover_signer_alloy(quest.signature.clone(), &quest.prompt_hash);
         if let Err(err) = addr {
-            info!("Validate signature error, detail = {:?}", err);
+            error!("Validate signature error, detail = {:?}", err);
         } else {
             debug!("recovered addr : {:?}", addr.unwrap());
         }
@@ -33,9 +33,10 @@ async fn question(
         request_id: quest.request_id.clone(),
         model_name: format!("./{}", quest.model),
         prompt: quest.prompt.clone(),
-        n_ctx: quest.params.n_ctx,
+        temperature: quest.params.temperature,
+        top_p: quest.params.top_p,
         n_predict: quest.params.max_tokens as usize,
-        n_threads: 4, // todo: use value in tee env
+        // n_threads: 4, // deprecated: use value in tee env
     };
 
     let result = op.tee_inference_sender.send(req);
