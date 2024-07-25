@@ -46,7 +46,7 @@ pub struct QuestionReq {
     pub signature: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct AnswerCallbackReq {
     request_id: String,
     node_id: String,
@@ -54,8 +54,23 @@ pub struct AnswerCallbackReq {
     prompt: String,
     answer: String,
     elapsed: u64,
-    attestation: String,
-    attest_signature: String,
+    selected: bool,
+    vrf_proof: VRFProof,
+    tee_credential: TEECredential,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct VRFProof {
+    pub vrf_prompt_hash: String,
+    pub vrf_random_value: String,
+    pub vrf_verify_pubkey: String,
+    pub vrf_proof: String,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct TEECredential {
+    pub tee_attestation: String,
+    pub tee_attest_signature: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -156,10 +171,10 @@ async fn answer_callback(
     use DigestHash as _;
     
     let mut sig_hex = String::new();
-    let hex_attest = base64::encode(answer.document.0.clone());
+    let base64_attest = base64::encode(answer.document.0.clone());
     let signer_key = B256::from_hex(config.node.signer_key.clone());
     if let Ok(signer_key) = signer_key {
-        let msg = hex_attest.sha256().to_fixed_bytes();
+        let msg = base64_attest.sha256().to_fixed_bytes();
         let sig = sign_message(signer_key.0, msg).unwrap_or_default();
         sig_hex = sig.to_hex_bytes().to_string();
     }
@@ -171,8 +186,17 @@ async fn answer_callback(
         prompt: answer.prompt.clone(),
         answer: answer.answer.clone(),
         elapsed: answer.elapsed,
-        attestation: hex_attest,
-        attest_signature: sig_hex,
+        selected: answer.selected,
+        vrf_proof: VRFProof {
+            vrf_prompt_hash: answer.vrf_prompt_hash.clone(),
+            vrf_random_value: answer.vrf_random_value.clone(),
+            vrf_verify_pubkey: answer.vrf_verify_pubkey.clone(),
+            vrf_proof: answer.vrf_proof.clone(),
+        },
+        tee_credential: TEECredential {
+            tee_attestation: base64_attest,
+            tee_attest_signature: sig_hex,
+        }
     };
 
     let client = ReqwestClient::new();

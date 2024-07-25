@@ -52,13 +52,14 @@ pub async fn get_operator_range_by_seed(
 pub async fn get_range_by_address(
     contract: OperatorRangeContract,
     query_addr: Address,
-) -> Result<(U256, U256)> {
+) -> Result<u64> {
     let OperatorRangeManager::operatorRangesReturn { start, end } =
         contract.operatorRanges(query_addr).call().await?;
 
     debug!("Operator {:?} ragnes: {:?}-{:?}", query_addr, start, end);
-
-    Ok((start, end))
+    let threshold = start - end;
+    let th: u64 = threshold.try_into()?;
+    Ok(th)
 }
 
 

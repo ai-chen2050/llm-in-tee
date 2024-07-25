@@ -3,11 +3,11 @@ use num_traits::{One, Num};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Sampler {
-    precision: u16
+    precision: usize
 }
 
 impl Sampler {
-    pub fn new(precision: u16) -> Self {
+    pub fn new(precision: usize) -> Self {
         Sampler {
             precision
         }
@@ -18,6 +18,7 @@ impl Sampler {
     }
     
     pub fn calculate_threshold(&self, probability: f64) -> BigUint {
+        // percision is based at bit
         let max_output = BigUint::one() << self.precision;
         let threshold = max_output * BigUint::from((probability * 100.0) as u64) / BigUint::from(100u64);
         threshold

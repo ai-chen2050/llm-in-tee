@@ -1,9 +1,4 @@
-use std::{
-    env,
-    fmt::Write,
-    future::pending,
-    time::Duration,
-};
+use std::{env, fmt::Write, future::pending, time::Duration};
 
 use tee_llm::nitro_llm::{nitro_enclaves_portal_session, AnswerResp, PromptReq};
 use tokio::{
@@ -43,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
             )),
             tokio::spawn(async move {
                 let verify = |answer: AnswerResp| {
-                    let document = answer.verify()?;
+                    let document = answer.verify_inference()?;
                     anyhow::ensure!(document.is_some());
                     Ok(())
                 };
@@ -83,8 +78,7 @@ async fn bench_session(
     update_ok_receiver: &mut UnboundedReceiver<AnswerResp>,
     verify: impl Fn(AnswerResp) -> anyhow::Result<()>,
     lines: &mut String,
-) -> anyhow::Result<()>
-{   
+) -> anyhow::Result<()> {
     // fixed args for testing
     let req = PromptReq {
         request_id: "todo!()".to_owned(),
@@ -93,9 +87,11 @@ async fn bench_session(
         top_p: 0.95,
         temperature: 0.0,
         n_predict: 128,
-        // n_threads: 4,   // deprecated: use value in tee env
+        vrf_threshold: 16777215,
+        vrf_precision: 6,
+        vrf_prompt_hash: "sfas".to_owned(),
     };
-    
+
     for _ in 0..count {
         sleep(Duration::from_millis(100)).await;
         let start = Instant::now();
@@ -105,7 +101,11 @@ async fn bench_session(
         };
         let elapsed = start.elapsed();
         eprintln!("outer elapsed: {elapsed:?}");
-        writeln!(lines, "{count} times outer elapsed: {}", elapsed.as_secs_f32())?;
+        writeln!(
+            lines,
+            "{count} times outer elapsed: {}",
+            elapsed.as_secs_f32()
+        )?;
         println!("answer: {:?}", answer);
         verify(answer)?
     }

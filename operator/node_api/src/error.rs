@@ -20,6 +20,7 @@ impl ErrorCodes {
     pub const OP_SEND_PROMPT_ERROR: u32 = 3004;
     pub const OP_DECODE_SIGNER_KEY_ERROR: u32 = 3005;
     pub const OP_NEW_VRF_RANGE_CONTRACT_ERROR: u32 = 3006;
+    pub const OP_GET_RANGE_CONTRACT_ERROR: u32 = 3007;
     
 }
 
@@ -109,4 +110,10 @@ pub enum OperatorError {
         ErrorCodes::OP_NEW_VRF_RANGE_CONTRACT_ERROR
     )]
     OPNewVrfRangeContractError(#[from] eyre::ErrReport),
+
+    #[error(
+        "Error: get vrf range contract failed, detail: {0}  (Error Code: {})",
+        ErrorCodes::OP_GET_RANGE_CONTRACT_ERROR
+    )]
+    OPGetVrfRangeContractError(String),
 }

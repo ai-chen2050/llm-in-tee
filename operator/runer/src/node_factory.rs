@@ -43,11 +43,11 @@ impl OperatorFactory {
         let cfg = Arc::new(config.clone());
         let node_id = config.node.node_id.clone();
         let signer_key = B256::from_hex(config.node.signer_key.clone()).map_err(OPDecodeSignerKeyError)?;
-        let vrf_contract = 
+        let vrf_range_contract = 
                 new_vrf_range_backend(&config.chain.chain_rpc_url, &config.chain.vrf_range_contract)
                 .map_err(OPNewVrfRangeContractError)?;
         
-        let server_state = ServerState::new(signer_key, vrf_contract, node_id, cfg.node.cache_msg_maximum);
+        let server_state = ServerState::new(signer_key, node_id, cfg.node.cache_msg_maximum);
         let state = RwLock::new(server_state);
         let storage = storage::Storage::new(cfg.clone()).await;
         let operator = Operator {
@@ -55,6 +55,7 @@ impl OperatorFactory {
             storage,
             state,
             tee_inference_sender,
+            vrf_range_contract
         };
 
         Ok(Arc::new(operator))

@@ -1,9 +1,9 @@
 use crate::error::{OperatorConfigError, OperatorConfigResult};
 use serde::Deserialize;
 use serde::Serialize;
-use tools::helper::validate_addr;
 use std::path::Path;
 use std::path::PathBuf;
+use tools::helper::validate_addr;
 use tools::helper::validate_key;
 
 /// Operator Node Config
@@ -51,6 +51,7 @@ pub struct NodeConfig {
 pub struct ChainConfig {
     pub chain_rpc_url: String,
     pub vrf_range_contract: String,
+    pub vrf_sort_precision: u16,
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug, Default)]

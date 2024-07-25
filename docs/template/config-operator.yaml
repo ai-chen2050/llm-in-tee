@@ -21,5 +21,6 @@ node:
 chain:
   chain_rpc_url: "https://rpc.holesky.ethpandaops.io"
   vrf_range_contract: "0x0a24a30E5a8Ca9B790c7f57F0826159569e8dc4B"
+  vrf_sort_precision: 6
 api:
   read_maximum: 20

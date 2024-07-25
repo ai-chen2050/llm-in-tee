@@ -14,6 +14,7 @@ pub struct Operator {
     pub storage: Storage,
     pub state: RwLock<ServerState>,
     pub tee_inference_sender: UnboundedSender<PromptReq>, 
+    pub vrf_range_contract: OperatorRangeContract,
 }
 
 pub type OperatorArc = Arc<Operator>;
@@ -29,17 +30,15 @@ impl Operator {
 pub struct ServerState {
     // pub clock_info: ClockInfo,
     pub signer_key: B256,
-    pub vrf_range_contract: OperatorRangeContract,
     pub message_ids: VecDeque<String>,
     pub cache_maximum: u64,
 }
 
 impl ServerState {
     /// Create a new server state.
-    pub fn new(signer: B256, range_contract: OperatorRangeContract, node_id: String, cache_maximum: u64) -> Self {
+    pub fn new(signer: B256, node_id: String, cache_maximum: u64) -> Self {
         Self {
             signer_key: signer,
-            vrf_range_contract: range_contract,
             message_ids: VecDeque::new(),
             cache_maximum,
         }

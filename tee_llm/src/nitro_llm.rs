@@ -1,15 +1,19 @@
-use bincode::Options;
-use tools::helper::machine_used;
-use std::io;
-use std::io::Write;
-use std::{sync::Arc, time::Instant};
-
 use common::{
     crypto::core::DigestHash,
     nitro_secure::{HandleFn, NitroSecureModule as NitroSecure},
     ordinary_clock::{Clock, LamportClock, OrdinaryClock},
     types::Payload,
 };
+use num_bigint::BigUint;
+use vrf::{ecvrf::{Output, VRFPrivateKey, VRFPublicKey, OUTPUT_LENGTH}, sample::Sampler as VRFSampler};
+use tools::helper::machine_used;
+use anyhow::Ok;
+use bincode::Options;
+use rand::rngs::OsRng;
+use std::{default, io};
+use std::io::Write;
+use std::{sync::Arc, time::Instant};
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::*;
@@ -25,19 +29,36 @@ pub struct PromptReq {
     pub temperature: f32,
     pub top_p: f32,       // top p
     pub n_predict: usize, // maximum predict token
+    pub vrf_prompt_hash: String,
+    pub vrf_threshold: u64,
+    pub vrf_precision: usize,
     // pub n_threads: u32,
     // pub clock: NitroEnclavesClock, // to be done
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AnswerResp {
     pub request_id: String,
     pub model_name: String,
     pub prompt: String,
     pub answer: String,
     pub elapsed: u64,
+    pub selected: bool,
     pub document: Payload,
+    pub vrf_prompt_hash: String,
+    pub vrf_random_value: String,
+    pub vrf_verify_pubkey: String,
+    pub vrf_proof: String,
     // pub clock: NitroEnclavesClock, // to be done
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct VRFReply {
+    pub selected: bool,
+    pub vrf_prompt_hash: String,
+    pub vrf_random_value: String,
+    pub vrf_verify_pubkey: String,
+    pub vrf_proof: String,
 }
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
@@ -52,7 +73,7 @@ pub struct NitroEnclavesLlm {
 // inside enclaves image
 #[cfg(feature = "nitro-enclaves")]
 impl AnswerResp {
-    pub fn verify(
+    pub fn verify_inference(
         &self,
     ) -> anyhow::Result<Option<aws_nitro_enclaves_nsm_api::api::AttestationDoc>> {
         if self.answer.is_empty() {
@@ -79,6 +100,27 @@ impl AnswerResp {
 
 #[cfg(feature = "nitro-enclaves")]
 impl NitroEnclavesLlm {
+
+    pub fn run_vrf(req: PromptReq) -> Result<VRFReply, anyhow::Error> {
+        let private_key = VRFPrivateKey::generate_keypair(&mut OsRng);
+        let public_key: VRFPublicKey = (&private_key).into();
+        let proof: vrf::ecvrf::Proof = private_key.prove(req.vrf_prompt_hash.as_bytes());
+        let output: Output = (&proof).into();
+        let start = OUTPUT_LENGTH * 2 - req.vrf_precision;
+        let end = OUTPUT_LENGTH * 2;
+        let random_num = hex::encode(output.to_bytes());  
+        let random_str = &random_num[start..end];
+        let vrf_sampler = VRFSampler::new(req.vrf_precision * 4);
+        let random_bigint = vrf_sampler.hex_to_biguint(random_str);
+        let selected = vrf_sampler.meets_threshold(&random_bigint, &BigUint::from(req.vrf_threshold));
+        Ok(VRFReply {
+            selected,
+            vrf_prompt_hash: req.vrf_prompt_hash,
+            vrf_random_value: random_num,
+            vrf_verify_pubkey: hex::encode(public_key.as_bytes()),
+            vrf_proof: hex::encode(proof.to_bytes()),
+        })
+    }
     pub fn run_task(req: PromptReq) -> Result<String, anyhow::Error> {
         // llama format
         let params = LlamaParams::default();
@@ -152,15 +194,19 @@ impl NitroEnclavesLlm {
                     let req: PromptReq = bincode::options().deserialize::<PromptReq>(&buf)?;
 
                     anyhow::ensure!(true);
+                    let mut answer = String::new();
+                    let mut document = Vec::<u8>::new();
                     let start = Instant::now();
-                    let answer = NitroEnclavesLlm::run_task(req.clone())?;
+                    let vrf = NitroEnclavesLlm::run_vrf(req.clone())?;
+                    if vrf.selected {
+                        answer = NitroEnclavesLlm::run_task(req.clone())?;
+                    }
                     let duration = start.elapsed();
-
                     // println!("\n\n Duration passed: {:?}", duration);
                     // let _ = io::stdout().flush();
-
+                    
                     let user_data = answer.sha256().to_fixed_bytes().to_vec();
-                    let document = nsm.process_attestation(user_data)?;
+                    document = nsm.process_attestation(user_data)?;
                     let answer_doc = AnswerResp {
                         request_id: req.request_id,
                         model_name: req.model_name,
@@ -168,7 +214,13 @@ impl NitroEnclavesLlm {
                         answer,
                         elapsed: duration.as_secs(),
                         document: Payload(document),
+                        selected: vrf.selected,
+                        vrf_prompt_hash: vrf.vrf_prompt_hash,
+                        vrf_random_value: vrf.vrf_random_value,
+                        vrf_verify_pubkey: vrf.vrf_verify_pubkey,
+                        vrf_proof: vrf.vrf_proof,
                     };
+
                     let buf = bincode::options().serialize(&answer_doc)?;
                     write_sender.send(buf)?;
                     Ok(())
