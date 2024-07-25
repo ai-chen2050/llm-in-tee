@@ -1,5 +1,5 @@
 use crate::api::request::QuestionReq;
-use crate::api::response::{make_resp_json, Response, WorkerStatus};
+use crate::api::response::{make_resp_json, Response};
 use crate::operator::OperatorArc;
 use actix_web::{body, get, post, web, Error, HttpRequest, HttpResponse, Result};
 use alloy::primitives::{address, Address};
@@ -10,10 +10,10 @@ use node_api::error::{
     OperatorAPIError::APIFailToJson,
     OperatorError::{OPGetVrfRangeContractError, OPSendPromptError},
 };
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 use serde_json::json;
 use hex::FromHex;
-use tee_llm::nitro_llm::PromptReq;
+use tee_llm::nitro_llm::{PromptReq, TEEReq};
 use tracing::{debug, error, info};
 
 /// WRITE API
@@ -48,7 +48,7 @@ async fn question(
         );
     }
 
-    let req = PromptReq {
+    let req = TEEReq::PromptReq(PromptReq {
         request_id: quest.request_id.clone(),
         model_name: format!("./{}", quest.model),
         prompt: quest.prompt.clone(),
@@ -58,7 +58,7 @@ async fn question(
         vrf_threshold: threshold.unwrap(),
         vrf_precision: op.config.chain.vrf_sort_precision as usize,
         vrf_prompt_hash: quest.prompt_hash.clone(),
-    };
+    });
 
     let result = op.tee_inference_sender.send(req);
     if let Err(err) = result {

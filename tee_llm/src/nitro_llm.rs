@@ -22,6 +22,18 @@ use llama_cpp::standard_sampler::{SamplerStage, StandardSampler};
 use llama_cpp::{LlamaModel, LlamaParams, SessionParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TEEReq {
+    Ping(String),
+    PromptReq(PromptReq),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TEEResp {
+    Ping(PingResp),
+    AnswerResp(AnswerResp),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptReq {
     pub request_id: String,
     pub model_name: String,
@@ -59,6 +71,15 @@ pub struct VRFReply {
     pub vrf_random_value: String,
     pub vrf_verify_pubkey: String,
     pub vrf_proof: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+pub struct PingResp {
+    pub echo: String,
+    pub cpu_percent: f32,
+    pub cpu_nums: usize,
+    pub mem_total: u64,
+    pub mem_used: u64,
 }
 
 #[derive(Debug, Clone, Hash, Serialize, Deserialize)]
@@ -121,7 +142,7 @@ impl NitroEnclavesLlm {
             vrf_proof: hex::encode(proof.to_bytes()),
         })
     }
-    pub fn run_task(req: PromptReq) -> Result<String, anyhow::Error> {
+    pub fn run_llm_task(req: PromptReq) -> Result<String, anyhow::Error> {
         // llama format
         let params = LlamaParams::default();
 
@@ -187,43 +208,69 @@ impl NitroEnclavesLlm {
         Ok(answer)
     }
 
-    pub fn worker() -> HandleFn {
+    pub fn handle_prompt(req: PromptReq, nsm: Arc<NitroSecure>, write_sender: UnboundedSender<Vec<u8>>) -> Result<(), anyhow::Error> {
+        let mut answer = String::new();
+        let mut document = Vec::<u8>::new();
+        let start = Instant::now();
+        let vrf = NitroEnclavesLlm::run_vrf(req.clone())?;
+        if vrf.selected {
+            answer = NitroEnclavesLlm::run_llm_task(req.clone())?;
+            let user_data = answer.sha256().to_fixed_bytes().to_vec();
+            document = nsm.process_attestation(user_data)?;
+        }
+        let duration = start.elapsed();
+        // println!("\n\n Duration passed: {:?}", duration);
+        // let _ = io::stdout().flush();
+        
+        let answer_doc = TEEResp::AnswerResp(AnswerResp {
+            request_id: req.request_id,
+            model_name: req.model_name,
+            prompt: req.prompt.clone(),
+            answer,
+            elapsed: duration.as_secs(),
+            document: Payload(document),
+            selected: vrf.selected,
+            vrf_prompt_hash: vrf.vrf_prompt_hash,
+            vrf_random_value: vrf.vrf_random_value,
+            vrf_verify_pubkey: vrf.vrf_verify_pubkey,
+            vrf_proof: vrf.vrf_proof,
+        });
+
+        let buf = bincode::options().serialize(&answer_doc)?;
+        write_sender.send(buf)?;
+        Ok(())
+    }
+
+    pub fn handle_ping(req: String, write_sender: UnboundedSender<Vec<u8>>) -> Result<(), anyhow::Error> {
+        let status = machine_used();
+        let req = TEEResp::Ping(PingResp {
+            echo: req,
+            cpu_percent: status.0,
+            cpu_nums: status.1,
+            mem_total: status.2,
+            mem_used: status.3,
+        });
+
+        let buf = bincode::options().serialize(&req)?;
+        write_sender.send(buf)?;
+        Ok(())
+    }
+
+    pub fn router() -> HandleFn {
         Arc::new(|buf, nsm, pcrs, write_sender| {
             Box::pin(async move {
                 if let Err(err) = async {
-                    let req: PromptReq = bincode::options().deserialize::<PromptReq>(&buf)?;
+                    let req: TEEReq = bincode::options().deserialize::<TEEReq>(&buf)?;
 
                     anyhow::ensure!(true);
-                    let mut answer = String::new();
-                    let mut document = Vec::<u8>::new();
-                    let start = Instant::now();
-                    let vrf = NitroEnclavesLlm::run_vrf(req.clone())?;
-                    if vrf.selected {
-                        answer = NitroEnclavesLlm::run_task(req.clone())?;
+                    match req {
+                        TEEReq::Ping(req) => {
+                            NitroEnclavesLlm::handle_ping(req, write_sender)
+                        },
+                        TEEReq::PromptReq(req) => {
+                            NitroEnclavesLlm::handle_prompt(req, nsm, write_sender)
+                        },
                     }
-                    let duration = start.elapsed();
-                    // println!("\n\n Duration passed: {:?}", duration);
-                    // let _ = io::stdout().flush();
-                    
-                    let user_data = answer.sha256().to_fixed_bytes().to_vec();
-                    document = nsm.process_attestation(user_data)?;
-                    let answer_doc = AnswerResp {
-                        request_id: req.request_id,
-                        model_name: req.model_name,
-                        prompt: req.prompt.clone(),
-                        answer,
-                        elapsed: duration.as_secs(),
-                        document: Payload(document),
-                        selected: vrf.selected,
-                        vrf_prompt_hash: vrf.vrf_prompt_hash,
-                        vrf_random_value: vrf.vrf_random_value,
-                        vrf_verify_pubkey: vrf.vrf_verify_pubkey,
-                        vrf_proof: vrf.vrf_proof,
-                    };
-
-                    let buf = bincode::options().serialize(&answer_doc)?;
-                    write_sender.send(buf)?;
-                    Ok(())
                 }
                 .await
                 {
@@ -235,7 +282,7 @@ impl NitroEnclavesLlm {
     }
 
     pub async fn run(port: u32) -> anyhow::Result<()> {
-        let handler: HandleFn = NitroEnclavesLlm::worker();
+        let handler: HandleFn = NitroEnclavesLlm::router();
 
         NitroSecure::run(port, handler).await
     }
@@ -244,8 +291,8 @@ impl NitroEnclavesLlm {
 pub async fn nitro_enclaves_portal_session(
     cid: u32,
     port: u32,
-    mut events: UnboundedReceiver<PromptReq>,
-    sender: UnboundedSender<AnswerResp>,
+    mut events: UnboundedReceiver<TEEReq>,
+    sender: UnboundedSender<TEEResp>,
 ) -> anyhow::Result<()> {
     use std::os::fd::AsRawFd;
 
@@ -318,8 +365,8 @@ pub fn try_connection(cid: u32, port: u32) -> anyhow::Result<tokio::net::UnixStr
 
 pub async fn tee_start_listening(
     stream: tokio::net::UnixStream,
-    mut events: UnboundedReceiver<PromptReq>,
-    sender: UnboundedSender<AnswerResp>,
+    mut events: UnboundedReceiver<TEEReq>,
+    sender: UnboundedSender<TEEResp>,
 ) -> anyhow::Result<()> {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 

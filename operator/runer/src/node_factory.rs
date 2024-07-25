@@ -1,5 +1,5 @@
 use crate::api::read::not_found;
-use crate::api::request::{answer_callback_task, periodic_heartbeat_task, register_worker};
+use crate::api::request::{listening_tee_resp_task, periodic_heartbeat_task, register_worker};
 use crate::handler::router;
 use crate::operator::{Operator, OperatorArc, ServerState};
 use crate::storage;
@@ -10,13 +10,11 @@ use alloy_wrapper::contracts::vrf_range::new_vrf_range_backend;
 use node_api::config::OperatorConfig;
 use node_api::error::OperatorError;
 use node_api::error::{
-    OperatorError::{
-        OPDecodeSignerKeyError, OPNewVrfRangeContractError
-    }, 
-    OperatorResult
+    OperatorError::{OPDecodeSignerKeyError, OPNewVrfRangeContractError},
+    OperatorResult,
 };
 use std::sync::Arc;
-use tee_llm::nitro_llm::{tee_start_listening, try_connection, AnswerResp, PromptReq};
+use tee_llm::nitro_llm::{tee_start_listening, try_connection, AnswerResp, TEEReq, TEEResp};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::RwLock;
 use tracing::info;
@@ -38,15 +36,18 @@ impl OperatorFactory {
 
     pub async fn create_operator(
         config: OperatorConfig,
-        tee_inference_sender: UnboundedSender<PromptReq>,
+        tee_inference_sender: UnboundedSender<TEEReq>,
     ) -> OperatorResult<OperatorArc> {
         let cfg = Arc::new(config.clone());
         let node_id = config.node.node_id.clone();
-        let signer_key = B256::from_hex(config.node.signer_key.clone()).map_err(OPDecodeSignerKeyError)?;
-        let vrf_range_contract = 
-                new_vrf_range_backend(&config.chain.chain_rpc_url, &config.chain.vrf_range_contract)
-                .map_err(OPNewVrfRangeContractError)?;
-        
+        let signer_key =
+            B256::from_hex(config.node.signer_key.clone()).map_err(OPDecodeSignerKeyError)?;
+        let vrf_range_contract = new_vrf_range_backend(
+            &config.chain.chain_rpc_url,
+            &config.chain.vrf_range_contract,
+        )
+        .map_err(OPNewVrfRangeContractError)?;
+
         let server_state = ServerState::new(signer_key, node_id, cfg.node.cache_msg_maximum);
         let state = RwLock::new(server_state);
         let storage = storage::Storage::new(cfg.clone()).await;
@@ -55,7 +56,7 @@ impl OperatorFactory {
             storage,
             state,
             tee_inference_sender,
-            vrf_range_contract
+            vrf_range_contract,
         };
 
         Ok(Arc::new(operator))
@@ -80,12 +81,10 @@ impl OperatorFactory {
             .expect("Failed to run server");
     }
 
-    async fn prepare_setup(
-        config: &OperatorConfig,
-    ) -> OperatorResult<UnboundedSender<PromptReq>> {
+    async fn prepare_setup(config: &OperatorConfig) -> OperatorResult<UnboundedSender<TEEReq>> {
         // detect and connect tee enclave service, if not, and exit
-        let (prompt_sender, prompt_receiver) = unbounded_channel::<PromptReq>();
-        let (answer_ok_sender, answer_ok_receiver) = unbounded_channel::<AnswerResp>();
+        let (prompt_sender, prompt_receiver) = unbounded_channel::<TEEReq>();
+        let (answer_ok_sender, answer_ok_receiver) = unbounded_channel::<TEEResp>();
 
         let (tee_cid, tee_port) = (config.net.tee_llm_cid, config.net.tee_llm_port);
         let result = try_connection(tee_cid, tee_port);
@@ -121,23 +120,19 @@ impl OperatorFactory {
         // periodic heartbeat task
         let config_clone = config.clone();
         tokio::spawn(periodic_heartbeat_task(config_clone));
-        
+
         // answer callback
         let config_clone = config.clone();
-        tokio::spawn(answer_callback_task(config_clone, answer_ok_receiver));
+        tokio::spawn(listening_tee_resp_task(config_clone, answer_ok_receiver));
 
         Ok(prompt_sender)
     }
 
     pub async fn initialize_node(self) -> OperatorResult<OperatorArc> {
-        let prompt_sender =
-            OperatorFactory::prepare_setup(&self.config).await?;
+        let prompt_sender = OperatorFactory::prepare_setup(&self.config).await?;
 
-        let arc_operator = OperatorFactory::create_operator(
-            self.config.clone(),
-            prompt_sender,
-        )
-        .await?;
+        let arc_operator =
+            OperatorFactory::create_operator(self.config.clone(), prompt_sender).await?;
 
         OperatorFactory::create_actix_node(arc_operator.clone()).await;
 

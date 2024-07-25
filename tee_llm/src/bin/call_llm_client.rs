@@ -1,6 +1,6 @@
 use std::{env, fmt::Write, future::pending, time::Duration};
 
-use tee_llm::nitro_llm::{nitro_enclaves_portal_session, AnswerResp, PromptReq};
+use tee_llm::nitro_llm::{nitro_enclaves_portal_session, AnswerResp, PromptReq, TEEReq, TEEResp};
 use tokio::{
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     time::{sleep, Instant},
@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
 
     let run_nitro_client = {
         let (update_sender, update_receiver) = unbounded_channel();
-        let (update_ok_sender, mut update_ok_receiver) = unbounded_channel::<AnswerResp>();
+        let (update_ok_sender, mut update_ok_receiver) = unbounded_channel::<TEEResp>();
         tokio::spawn({
             let update_sender = update_sender.clone();
             async move {
@@ -74,13 +74,13 @@ async fn main() -> anyhow::Result<()> {
 
 async fn bench_session(
     count: usize,
-    update_sender: &UnboundedSender<PromptReq>,
-    update_ok_receiver: &mut UnboundedReceiver<AnswerResp>,
+    update_sender: &UnboundedSender<TEEReq>,
+    update_ok_receiver: &mut UnboundedReceiver<TEEResp>,
     verify: impl Fn(AnswerResp) -> anyhow::Result<()>,
     lines: &mut String,
 ) -> anyhow::Result<()> {
     // fixed args for testing
-    let req = PromptReq {
+    let req = TEEReq::PromptReq(PromptReq {
         request_id: "todo!()".to_owned(),
         model_name: "./llama-2-7b-chat.Q4_0.gguf".to_owned(),
         prompt: "How to combine AI and blockchain?".to_owned(),
@@ -90,11 +90,19 @@ async fn bench_session(
         vrf_threshold: 16777215,
         vrf_precision: 6,
         vrf_prompt_hash: "sfas".to_owned(),
-    };
+    });
+
+    let ping = TEEReq::Ping("hello".to_owned());
 
     for _ in 0..count {
         sleep(Duration::from_millis(100)).await;
         let start = Instant::now();
+        update_sender.send(ping.clone())?;
+        let Some(pong) = update_ok_receiver.recv().await else {
+            anyhow::bail!("missing UpdateOk")
+        };
+        println!("answer: {:?}", pong);
+        
         update_sender.send(req.clone())?;
         let Some(answer) = update_ok_receiver.recv().await else {
             anyhow::bail!("missing UpdateOk")
@@ -107,7 +115,9 @@ async fn bench_session(
             elapsed.as_secs_f32()
         )?;
         println!("answer: {:?}", answer);
-        verify(answer)?
+        if let TEEResp::AnswerResp(answer) = answer {
+            verify(answer)?
+        }
     }
     Ok(())
 }

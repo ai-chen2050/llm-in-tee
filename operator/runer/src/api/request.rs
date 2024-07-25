@@ -1,16 +1,16 @@
 use crate::api::response::WorkerStatus;
-use alloy_wrapper::util::sign_message;
-use node_api::config::OperatorConfig;
-use node_api::error::OperatorError;
-use common::crypto::core::DigestHash;
-use tee_llm::nitro_llm::AnswerResp;
-use tools::helper::machine_used;
 use alloy_primitives::hex::FromHex;
 use alloy_primitives::B256;
+use alloy_wrapper::util::sign_message;
+use common::crypto::core::DigestHash;
+use node_api::config::OperatorConfig;
+use node_api::error::OperatorError;
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
+use tee_llm::nitro_llm::{AnswerResp, TEEResp};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::{sleep, Duration};
+use tools::helper::machine_used;
 use tracing::{debug, error, info};
 
 #[derive(serde::Serialize)]
@@ -145,7 +145,10 @@ pub async fn periodic_heartbeat_task(config: OperatorConfig) {
                         let json = serde_json::from_str(&body).unwrap_or_default();
                         let data: HeartbeatResp = serde_json::from_value(json).unwrap_or_default();
                         if !data.exist {
-                            let response = register_worker(&config).await.map_err(OperatorError::OPSetupRegister).unwrap();
+                            let response = register_worker(&config)
+                                .await
+                                .map_err(OperatorError::OPSetupRegister)
+                                .unwrap();
                             if response.status().is_success() {
                                 info!(
                                     "register worker to dispatcher success! response_body: {:?}",
@@ -153,7 +156,7 @@ pub async fn periodic_heartbeat_task(config: OperatorConfig) {
                                 )
                             }
                         }
-                    },
+                    }
                     Err(err) => error!("Failed to read response body, {}", err),
                 }
             }
@@ -169,7 +172,7 @@ async fn answer_callback(
 ) -> Result<reqwest::Response, reqwest::Error> {
     info!("answer callback to dispatcher. answer = {:?}", answer);
     use DigestHash as _;
-    
+
     let mut sig_hex = String::new();
     let base64_attest = base64::encode(answer.document.0.clone());
     let signer_key = B256::from_hex(config.node.signer_key.clone());
@@ -212,21 +215,26 @@ async fn answer_callback(
         .await
 }
 
-pub async fn answer_callback_task(
+pub async fn listening_tee_resp_task(
     config: OperatorConfig,
-    mut receiver: UnboundedReceiver<AnswerResp>,
+    mut receiver: UnboundedReceiver<TEEResp>,
 ) {
     loop {
-        if let Some(answer) = receiver.recv().await {
-            match answer_callback(&config, &answer).await {
-                Ok(response) => {
-                    debug!("Response status: {}", response.status());
-                    match response.text().await {
-                        Ok(body) => debug!("Response body: {}", body),
-                        Err(err) => error!("Failed to read response body, {}", err),
-                    }
+        if let Some(resp) = receiver.recv().await {
+            match resp {
+                TEEResp::Ping(pong) => {
+                    debug!("Response pong: {:?}", pong);
                 }
-                Err(err) => error!("answer callback request error, {}", err),
+                TEEResp::AnswerResp(answer) => match answer_callback(&config, &answer).await {
+                    Ok(response) => {
+                        debug!("Response status: {}", response.status());
+                        match response.text().await {
+                            Ok(body) => debug!("Response body: {}", body),
+                            Err(err) => error!("Failed to read response body, {}", err),
+                        }
+                    }
+                    Err(err) => error!("answer callback request error, {}", err),
+                },
             }
         }
     }

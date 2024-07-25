@@ -4,7 +4,7 @@ use alloy::{
     signers::{local::PrivateKeySigner, Signer, SignerSync},
 };
 // use const_hex::FromHex;
-use std::{io::Read, str::FromStr};
+use std::str::FromStr;
 use eyre::Result;
 use rand::rngs::OsRng;
 use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
