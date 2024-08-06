@@ -50,16 +50,18 @@ async fn main() -> anyhow::Result<()> {
                 };
                 let mut lines = String::new();
                 if let Some(num_concurrent) = num_concurrent {
-                    stress_bench_session(
-                        1 << 10,
-                        0,
-                        num_concurrent,
-                        &update_sender,
-                        &mut update_ok_receiver,
-                        &mut lines,
-                    )
-                    .await?;
-                    println!("{lines}")
+                    for size in (0..=12).step_by(2).map(|n| 1 << n) {
+                        stress_bench_session(
+                            size,
+                            0,
+                            num_concurrent,
+                            &update_sender,
+                            &mut update_ok_receiver,
+                            &mut lines,
+                        )
+                        .await?;
+                    }
+                    // println!("{lines}")
                 } else {
                     for size in (0..=16).step_by(2).map(|n| 1 << n) {
                         bench_session(
@@ -129,7 +131,7 @@ where
         };
         let elapsed = start.elapsed();
         eprintln!("{size:8} {num_merged:3} {elapsed:?}");
-        writeln!(lines, "{size},{num_merged},{}", elapsed.as_secs_f32())?;
+        writeln!(lines, "{size},{num_merged},{}s", elapsed.as_secs_f32())?;
         verify(clock)?
     }
     Ok(())
@@ -167,7 +169,10 @@ where
             anyhow::bail!("unreachable")
         }
     }
-    eprintln!("concurrent {num_concurrent} count {count}");
+    println!(
+        "key {size},merged {num_merged},concurrent {num_concurrent}, tps {}",
+        count as f32 / 10.
+    );
     writeln!(
         lines,
         "{size},{num_merged},{num_concurrent},{}",
