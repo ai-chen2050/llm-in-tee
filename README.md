@@ -1,6 +1,14 @@
-# Llm-In-TEE
+# AOS TEE Operator
 
 ## Overview
+
+The AOS TEE Operator is a role of [Aos-AVS](https://zsocial.gitbook.io/aos-network) in Hetu Protocols. 
+
+By registering with AOS on Dispatcher, the operator could service the AI inference verification task.The staker can delegate funds to an operator by Delegation Manager contract.
+
+The [Llm-In-TEE](#llm-in-tee) is a novelty framworks to run a TEE verification node service. And the AOS TEE Operators are TEE workers and building on Llm-In-TEE framwork.
+
+## Llm-In-TEE
 
 Run large AI models and verifiable logic clock in TEE environment.
 
@@ -18,7 +26,7 @@ Second core module verifiable logic clock is an implementation of Chronos's TEE 
 
 The Chronos is a novel logical clock system designed for open networks with Byzantine participants, offering improved fault tolerance and performance. Please refer to [hetu chronos](https://github.com/hetu-project/chronos) repository for more details.
 
-## Architecture
+### Llm-In-TEE Arch
 
 ![architecture-diagram](./docs/img/architecture-diagram.png)
 
@@ -27,7 +35,7 @@ The Chronos is a novel logical clock system designed for open networks with Byza
 ### Build from source
 
 ```bash
-git clone https://github.com/ai-chen2050/llm-in-tee.git
+git clone https://github.com/hetu-project/aos-tee-operator.git
 
 cd llm-in-tee
 
@@ -36,7 +44,7 @@ git submodule update --init --recursive
 cargo build --features nitro-enclaves --release
 ```
 
-## Run in TEE
+## Run TEE Operator
 
 Now, this repository use the aws nitro enclave as its trust execution environment.  
 
@@ -63,3 +71,7 @@ sudo chmod +x init_env.sh
 ./init_env.sh
 ```  
 Remember please re-run the script when you update the `/etc/nitro_enclaves/allocator.yaml`.
+
+### Run Operator
+
+Please see [Run TEE Operator](./operator/README.md) for more detail information.
