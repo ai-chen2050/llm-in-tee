@@ -66,6 +66,21 @@ pub fn verify_secp256k1_recovery_pk(
     Ok(())
 }
 
+pub fn verify_secp256k1_recovery_pk_bytes(
+    signature_bytes: Vec<u8>,
+    message_bytes: [u8; 32],
+) -> Option<secp256k1::PublicKey>  {
+
+    let secp = secp256k1::Secp256k1::new();
+
+    let recovery_id = RecoveryId::from_i32(i32::from(signature_bytes[64])).unwrap();
+    let signatures_no_id = &signature_bytes[0..64];
+
+    let recoverable_signature = RecoverableSignature::from_compact(signatures_no_id, recovery_id).unwrap();
+    let message = secp256k1::Message::from_digest_slice(&message_bytes).unwrap();
+    secp.recover_ecdsa(&message, &recoverable_signature).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::crypto::core::DigestHash;
@@ -93,14 +108,17 @@ mod tests {
         let mut serialized_with_recovery_id = serialized_signature.1.to_vec();
         serialized_with_recovery_id.push(recovery_id_byte);
         let sig_hex = hex::encode(serialized_with_recovery_id);
-        println!(
-            "Signature with recovery ID in hex: {}, len = {}",
-            sig_hex,
-            sig_hex.len()
-        );
-
         let msg_hex = hex::encode(msg);
+        println!(
+            "Signature with recovery ID in hex: {}, len = {},\n msg_hex: {}",
+            sig_hex,
+            sig_hex.len(),
+            msg_hex
+        );
+        
         let ret = verify_secp256k1_recovery_pk(&sig_hex, &msg_hex);
+        let recover_pubkey = recover_public_key(&secp, &signature_recover, &msg).unwrap();
         assert!(ret.is_ok());
+        assert_eq!(recover_pubkey, public_key);
     }
 }

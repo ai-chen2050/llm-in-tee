@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     // println!("{lines}")
                 } else {
+                    println!("key, num_merged, deserialize_tee, verify_proof_tee, update_clock_tee, gen_clock_proof_tee, total_in_tee, net_round");
                     for size in (0..=16).step_by(2).map(|n| 1 << n) {
                         bench_session(
                             size,
@@ -117,20 +118,31 @@ where
 {
     let clock =
         C::try_from(OrdinaryClock((0..size).map(|i| (i as _, 0)).collect())).map_err(Into::into)?;
+    let start = Instant::now();
     update_sender.send(Update(clock, Default::default(), 0))?;
-    let Some((_, clock)) = update_ok_receiver.recv().await else {
+    let Some((_, clock, elapsed)) = update_ok_receiver.recv().await else {
         anyhow::bail!("missing UpdateOk")
     };
-    for _ in 0..10 {
+    let net_round = start.elapsed();
+    println!(
+        "{size}, {num_merged}, {:?}, {:?}, {:?}, {:?}, {:?}, {:?}",
+        elapsed[0], elapsed[1], elapsed[2], elapsed[3], elapsed[4], net_round
+    );
+
+    for _ in 0..5 {
         sleep(Duration::from_millis(100)).await;
         let update = Update(clock.clone(), vec![clock.clone(); num_merged], 0);
         let start = Instant::now();
         update_sender.send(update)?;
-        let Some((_, clock)) = update_ok_receiver.recv().await else {
+        let Some((_, clock, elapsed_in_tee)) = update_ok_receiver.recv().await else {
             anyhow::bail!("missing UpdateOk")
         };
         let elapsed = start.elapsed();
-        eprintln!("{size:8} {num_merged:3} {elapsed:?}");
+        // eprintln!("{size:8} {num_merged:3} {elapsed:?}");
+        println!(
+            "{size}, {num_merged}, {:?}, {:?}, {:?}, {:?}, {:?}, {:?}",
+            elapsed_in_tee[0], elapsed_in_tee[1], elapsed_in_tee[2], elapsed_in_tee[3], elapsed_in_tee[4], elapsed 
+        );
         writeln!(lines, "{size},{num_merged},{}s", elapsed.as_secs_f32())?;
         verify(clock)?
     }
@@ -155,7 +167,7 @@ where
     }
     let mut count = 0;
     let close_loops_session = async {
-        while let Some((id, clock)) = update_ok_receiver.recv().await {
+        while let Some((id, clock, _elapsed)) = update_ok_receiver.recv().await {
             count += 1;
             let update = Update(clock.clone(), vec![clock.clone(); num_merged], id);
             update_sender.send(update)?
@@ -170,12 +182,12 @@ where
         }
     }
     println!(
-        "key {size},merged {num_merged},concurrent {num_concurrent}, tps {}",
+        "key {size},merged {num_merged},counts {count}, tps {}",
         count as f32 / 10.
     );
     writeln!(
         lines,
-        "{size},{num_merged},{num_concurrent},{}",
+        "{size},{num_merged},{count},{}",
         count as f32 / 10.
     )?;
     Ok(())

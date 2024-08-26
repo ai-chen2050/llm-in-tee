@@ -1,5 +1,7 @@
-use std::{cmp::Ordering, collections::BTreeMap};
+use std::{cmp::Ordering, collections::{BTreeMap, HashMap}};
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
+use bincode::Options;
 
 pub trait Clock: PartialOrd + Clone + Send + Sync + 'static {
     fn reduce(&self) -> LamportClock;
@@ -58,6 +60,16 @@ impl OrdinaryClock {
         *updated.0.entry(id).or_default() += 1;
         updated
     }
+
+    pub fn calculate_sha256(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        let data = bincode::options().serialize(&self.0).expect("Failed to serialize data");
+        // Update the hasher with the JSON string
+        hasher.update(data);
+
+        // Calculate the hash & return bytes
+        hasher.finalize().into()
+    }
 }
 
 impl PartialOrd for OrdinaryClock {
@@ -104,4 +116,214 @@ impl Clock for OrdinaryClock {
     fn reduce(&self) -> LamportClock {
         self.0.values().copied().sum()
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{sync::{atomic::{AtomicUsize, Ordering}, Arc}, time::{Duration, Instant}};
+    use rand::rngs::OsRng;
+    use futures::future::join_all;
+    use tokio::runtime::Builder;
+    use crate::crypto::{core::DigestHash, recovery::{recover_public_key, sign_message_recover_pk, verify_secp256k1_recovery_pk_bytes}};
+
+
+    #[test]
+    fn default_is_genesis() -> anyhow::Result<()> {
+        anyhow::ensure!(OrdinaryClock::default().is_genesis());
+        Ok(())
+    }
+
+    #[test]
+    fn clock_sha256() -> anyhow::Result<()> {
+        let mut clock = OrdinaryClock((0..4).map(|i| (i as _, 0)).collect());
+        clock = clock.update(vec![OrdinaryClock::default()].iter(), 0);
+        println!("{:?}, {:?}", clock, clock.calculate_sha256());
+        
+        // Tips: when clock is hashmap, this serialize and sha256 can't reproduce, every time is different.
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stress_raw_update() -> anyhow::Result<()> {
+        for size in (0..=12).step_by(2).map(|n| 1 << n) {
+            let num_merged = 0;
+            let clock = OrdinaryClock((0..size).map(|i| (i as _, 0)).collect());
+
+            let mut count = 0;
+            let start_time = Instant::now();
+            let close_loops_session = async {
+                let mut current_clock = clock.clone();
+                loop {
+                    if start_time.elapsed() >= Duration::from_secs(10) {
+                        break;
+                    }
+
+                    let updated_clock = current_clock.update(vec![clock.clone(); num_merged].iter(), 0);
+                    count += 1;
+                    current_clock = updated_clock;
+                }
+                anyhow::Ok(())
+            };
+
+            close_loops_session.await?;
+            println!(
+                "key {size},merged {num_merged}, tps {}",
+                count as f32 / 10.
+            );
+        }
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn stress_raw_update_concurrency() -> anyhow::Result<()> {
+        let core = num_cpus::get();
+        let rt = Arc::new(Builder::new_multi_thread()
+            .worker_threads(core)
+            .build()
+            .unwrap());
+
+        for size in (0..=12).step_by(2).map(|n| 1 << n) {
+            let count = Arc::new(AtomicUsize::new(0));
+            let mut tasks = Vec::new();
+            let mut shifts: Vec<i32> = Vec::with_capacity(core);
+            for _ in 0..core {
+                shifts.push(size);
+            }
+            for size in shifts {
+                let num_merged = 0;
+                let clock = OrdinaryClock((0..size).map(|i| (i as _, 0)).collect());
+        
+                let count_clone = Arc::clone(&count);
+                let start_time = Instant::now();
+                let close_loops_session = async move {
+                    // different clocks in different threads
+                    let mut current_clock = clock.clone();
+                    loop {
+                        if start_time.elapsed() >= Duration::from_secs(10) {
+                            break;
+                        }
+        
+                        let updated_clock = current_clock.update(vec![clock.clone(); num_merged].iter(), 0);
+                        count_clone.fetch_add(1, Ordering::Relaxed);
+                        current_clock = updated_clock;
+                    }
+                    current_clock
+                };
+                tasks.push(rt.spawn(close_loops_session));
+            }
+            let results = join_all(tasks).await;
+            for result in results {
+                let clock = result?;
+                println!("key: {}, clock: {:?}", size, clock.0.get(&0));
+            }
+    
+            println!(
+                "key {}, merged 0, tps {}",
+                size,
+                count.load(Ordering::Relaxed) as f32 / 10.
+            );
+        }
+
+        // Shutdown Runtime
+        Arc::try_unwrap(rt).unwrap().shutdown_background();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stress_verify_update() -> anyhow::Result<()> {
+        use DigestHash as _;
+
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut OsRng);
+        
+        for size in (0..=12).step_by(2).map(|n| 1 << n) {
+            let num_merged = 0;
+            let clock = OrdinaryClock((0..size).map(|i| (i as _, 0)).collect());
+            let clock_hash = clock.sha256().to_fixed_bytes();
+            let mut count = 0;
+            
+            // sign once
+            let signature_recover = sign_message_recover_pk(&secp, &secret_key, &clock.sha256().to_fixed_bytes());
+
+            let start_time = Instant::now();
+            let close_loops_session = async {
+                let mut current_clock = clock.clone();
+                loop {
+                    if start_time.elapsed() >= Duration::from_secs(10) {
+                        break;
+                    }
+                    
+                    // verify
+                    let recover_pubkey = recover_public_key(&secp, &signature_recover, &clock_hash).unwrap();
+                    assert_eq!(recover_pubkey, public_key);
+
+                    // update
+                    let updated_clock = current_clock.update(vec![clock.clone(); num_merged].iter(), 0);
+                    count += 1;
+                    current_clock = updated_clock;
+                }
+                anyhow::Ok(())
+            };
+
+            close_loops_session.await?;
+            println!(
+                "key {size},merged {num_merged}, tps {}",
+                count as f32 / 10.
+            );
+        }
+        Ok(())
+    }
+    
+    #[tokio::test]
+    async fn stress_sig_verify_update() -> anyhow::Result<()> {
+        use DigestHash as _;
+
+        let secp = secp256k1::Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut OsRng);
+        
+        for size in (0..=12).step_by(2).map(|n| 1 << n) {
+            let num_merged = 0;
+            let clock = OrdinaryClock((0..size).map(|i| (i as _, 0)).collect());
+
+            let mut count = 0;
+            let mut signatures = None;
+            let start_time = Instant::now();
+            let close_loops_session = async {
+                let mut current_clock = clock.clone();
+                loop {
+                    if start_time.elapsed() >= Duration::from_secs(10) {
+                        break;
+                    }
+                    
+                    // verify
+                    if !signatures.is_none() {
+                        let clock_hash = current_clock.sha256().to_fixed_bytes();
+                        let recover_pubkey = recover_public_key(&secp, &signatures.unwrap(), &clock_hash).unwrap();
+                        assert_eq!(recover_pubkey, public_key);
+                    }
+
+                    // update
+                    let updated_clock = current_clock.update(vec![clock.clone(); num_merged].iter(), 0);
+                    count += 1;
+                    current_clock = updated_clock;
+                    
+                    // sign
+                    let signature_recover = sign_message_recover_pk(&secp, &secret_key, &current_clock.sha256().to_fixed_bytes());
+                    signatures = Some(signature_recover);
+                }
+                anyhow::Ok(())
+            };
+
+            close_loops_session.await?;
+            println!(
+                "key {size},merged {num_merged}, tps {}",
+                count as f32 / 10.
+            );
+        }
+        Ok(())
+    }
+    
 }

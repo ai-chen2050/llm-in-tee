@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use bincode::Options;
 // use std::io;
 // use std::io::Write;
@@ -11,16 +11,16 @@ use common::{
 };
 use derive_where::derive_where;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::{sync::mpsc::{UnboundedReceiver, UnboundedSender}, time::Instant};
 use tracing::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Update<C>(pub C, pub Vec<C>, pub u64);
 
 // feel lazy to define event type for replying
-pub type UpdateOk<C> = (u64, C);
+pub type UpdateOk<C> = (u64, C, Vec<Duration>);
 
-#[derive(Debug, Clone, Hash, derive_more::AsRef, Serialize, Deserialize)]
+#[derive(Debug, Clone, derive_more::AsRef, Serialize, Deserialize)]
 #[derive_where(PartialOrd, PartialEq)]
 pub struct NitroEnclavesClock {
     #[as_ref]
@@ -82,10 +82,25 @@ impl NitroEnclavesClock {
                 // IO action in tee is severe delay, just debug
                 // println!("Received buffer: {:?}", buf);
                 // let _ = io::stdout().flush();
-    
+               
+                // if production env, need to remove time slot log
+                let mut timers = Vec::new();
                 if let Err(err) = async {
+                    // 0. once action time
+                    let full_start = Instant::now();
+
+                    // 1. decode time
+                    let start = Instant::now();
                     let Update(prev, merged, id) = bincode::options()
-                        .deserialize::<Update<NitroEnclavesClock>>(&buf)?;
+                        .deserialize::<Update<NitroEnclavesClock>>(&buf)?;                  
+                    
+                    let elapsed = start.elapsed();
+                    timers.push(elapsed);
+                    // println!("bincode deserialize: {:?}", elapsed);
+                    // let _ = io::stdout().flush();
+                    
+                    // 2. verify clocks time
+                    let start = Instant::now();
                     for clock in [&prev].into_iter().chain(&merged) {
                         if let Some(document) = clock.verify()? {
                             for (i, pcr) in pcrs.iter().enumerate() {
@@ -95,10 +110,26 @@ impl NitroEnclavesClock {
                             }
                         }
                     }
+
+                    let elapsed = start.elapsed();
+                    timers.push(elapsed);
+                    // println!("verify clock: {:?}", elapsed);
+                    // let _ = io::stdout().flush();
+
+                    // 3. update clock time
+                    let start = Instant::now();
                     let plain = prev
                         .plain
                         .update(merged.iter().map(|clock| &clock.plain), id);
                     
+                    let elapsed = start.elapsed();
+                    timers.push(elapsed);
+                    // println!("Update clock: {:?}", elapsed);
+                    // let _ = io::stdout().flush();
+                    
+                    // 4. gen clock with proof time
+                    let start = Instant::now();
+                    // let key_lens = plain.0.len();
                     // relies on the fact that different clocks always hash into different
                     // digests, hopefully true
                     let user_data = plain.sha256().to_fixed_bytes().to_vec();
@@ -107,7 +138,18 @@ impl NitroEnclavesClock {
                         plain,
                         document: Payload(document),
                     };
-                    let buf = bincode::options().serialize(&(id, updated))?;
+
+                    let elapsed = start.elapsed();
+                    timers.push(elapsed);
+                    // println!("Gen clock proof: {:?}", elapsed);
+                    // let _ = io::stdout().flush();
+
+                    let elapsed = full_start.elapsed();
+                    timers.push(elapsed);
+                    // println!("Total once time: {:?}, key is {:?}", elapsed, key_lens);
+                    // let _ = io::stdout().flush();
+                    
+                    let buf = bincode::options().serialize(&(id, updated, timers))?;
                     write_sender.send(buf)?;
                     Ok(())
                 }
