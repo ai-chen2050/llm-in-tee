@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AOS TEE Operator is a role of [Aos-AVS](https://zsocial.gitbook.io/aos-network) in Hetu Protocols. 
+The AOS TEE Operator is a role of EigenAVS in Hetu Protocols. 
 
 By registering with AOS on Dispatcher, the operator could service the AI inference verification task.The staker can delegate funds to an operator by Delegation Manager contract.
 
